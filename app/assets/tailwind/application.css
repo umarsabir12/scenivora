@@ -1,0 +1,4 @@
+@import "tailwindcss";
+
+/* The app is dark-only. `dark:` variants apply whenever the <html> element has the `dark` class. */
+@custom-variant dark (&:where(.dark, .dark *));

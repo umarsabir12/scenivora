@@ -1,0 +1,36 @@
+<header class="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-white/5 bg-[#0c0e12]/80 px-4 backdrop-blur sm:px-6">
+  <button type="button"
+          class="-ml-2 rounded-lg p-2 text-zinc-400 hover:bg-white/5 md:hidden"
+          aria-label="Open navigation"
+          data-action="sidebar#toggle">
+    <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+    </svg>
+  </button>
+
+  <%= link_to "Scenivora", root_path, class: "font-semibold md:hidden" %>
+
+  <div class="ml-auto flex items-center gap-4">
+    <div class="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-zinc-200 sm:flex" title="Credit balance">
+      <span class="text-[#f0b95a]" aria-hidden="true">&#9889;</span>
+      <span data-testid="credits-balance"><%= number_with_delimiter(current_user.credits_balance) %></span>
+      <span class="text-zinc-500">credits</span>
+    </div>
+
+    <details class="relative">
+      <summary class="flex cursor-pointer list-none items-center gap-2 rounded-full p-1 pr-2 hover:bg-white/5">
+        <span class="flex size-8 items-center justify-center rounded-full bg-[#f0b95a] text-sm font-semibold text-zinc-950">
+          <%= current_user.email.first.upcase %>
+        </span>
+        <span class="hidden max-w-[10rem] truncate text-sm text-zinc-300 sm:block"><%= current_user.email %></span>
+      </summary>
+
+      <div class="absolute right-0 mt-2 w-56 origin-top-right rounded-xl border border-white/10 bg-[#161920] p-1 text-sm shadow-xl">
+        <p class="truncate px-3 py-2 text-zinc-500"><%= current_user.email %></p>
+        <%= link_to "Account settings", edit_user_registration_path, class: "block rounded-lg px-3 py-2 text-zinc-300 hover:bg-white/5" %>
+        <%= button_to "Sign out", destroy_user_session_path, method: :delete,
+              class: "w-full rounded-lg px-3 py-2 text-left text-zinc-300 hover:bg-white/5 cursor-pointer" %>
+      </div>
+    </details>
+  </div>
+</header>

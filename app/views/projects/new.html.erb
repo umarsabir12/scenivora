@@ -1,0 +1,45 @@
+<% content_for :title, "New project · Scenivora" %>
+
+<div class="mx-auto max-w-5xl">
+  <div>
+    <%= link_to "← Projects", projects_path, class: "text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" %>
+    <h1 class="mt-2 text-2xl font-bold tracking-tight">New project</h1>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Tell us what the video is about. You'll review and edit the script next.</p>
+  </div>
+
+  <%= form_with model: @project, class: "mt-8 space-y-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 sm:p-8 dark:bg-gray-900 dark:ring-gray-800" do |form| %>
+    <% if @project.errors.any? %>
+      <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300">
+        <ul class="list-disc pl-5">
+          <% @project.errors.full_messages.each do |message| %>
+            <li><%= message %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <div>
+      <%= form.label :prompt, "What is the video about?", class: "block text-sm font-medium text-gray-700 dark:text-gray-300" %>
+      <%= form.text_area :prompt, rows: 5, required: true, maxlength: 2_000,
+            placeholder: "e.g. The untold story of how the Panama Canal changed global shipping",
+            class: field_classes %>
+    </div>
+
+    <div class="grid gap-6 sm:grid-cols-2">
+      <div>
+        <%= form.label :tone, class: "block text-sm font-medium text-gray-700 dark:text-gray-300" %>
+        <%= form.select :tone, tone_options, {}, class: field_classes %>
+      </div>
+
+      <div>
+        <%= form.label :target_length_minutes, "Target length", class: "block text-sm font-medium text-gray-700 dark:text-gray-300" %>
+        <%= form.select :target_length_minutes, target_length_options, {}, class: field_classes %>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-end gap-3 pt-2">
+      <%= link_to "Cancel", projects_path, class: secondary_button_classes %>
+      <%= form.submit "Create project", class: button_classes %>
+    </div>
+  <% end %>
+</div>

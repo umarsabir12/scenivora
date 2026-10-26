@@ -1,0 +1,32 @@
+<% content_for :title, "Sign in · Scenivora" %>
+
+<h1 class="text-2xl font-bold tracking-tight">Sign in</h1>
+<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+  New here?
+  <%= link_to "Create an account", new_user_registration_path, class: "font-medium text-indigo-600 hover:underline dark:text-indigo-400" %>
+</p>
+
+<%= form_for(resource, as: resource_name, url: session_path(resource_name), class: "mt-6 space-y-5") do |form| %>
+  <div>
+    <%= form.label :email, "Email", class: "block text-sm font-medium text-gray-700 dark:text-gray-300" %>
+    <%= form.email_field :email, required: true, autofocus: true, autocomplete: "email",
+          placeholder: "you@example.com", class: field_classes %>
+  </div>
+
+  <div>
+    <%= form.label :password, class: "block text-sm font-medium text-gray-700 dark:text-gray-300" %>
+    <%= form.password_field :password, required: true, autocomplete: "current-password",
+          placeholder: "Enter your password", maxlength: 72, class: field_classes %>
+  </div>
+
+  <div class="flex items-center gap-2">
+    <%= form.check_box :remember_me, class: "size-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" %>
+    <%= form.label :remember_me, "Keep me signed in", class: "text-sm text-gray-600 dark:text-gray-400" %>
+  </div>
+
+  <%= form.submit "Sign in", class: "#{button_classes} w-full" %>
+<% end %>
+
+<p class="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
+  <%= link_to "Forgot password?", new_user_password_path, class: "hover:underline" %>
+</p>

@@ -1,0 +1,65 @@
+<% content_for :title, "Projects · Scenivora" %>
+
+<div class="mx-auto max-w-5xl space-y-8">
+  <section class="rounded-2xl border border-white/5 bg-[#161920] p-6">
+    <h2 class="text-lg font-semibold">What's your next video about?</h2>
+
+    <%= form_with model: @new_project, url: projects_path, class: "mt-4 space-y-4" do |form| %>
+      <%= hidden_field_tag :generate, 1 %>
+
+      <% if @new_project.errors.any? %>
+        <p class="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"><%= @new_project.errors.full_messages.to_sentence %></p>
+      <% end %>
+
+      <%= form.text_area :prompt, rows: 3, required: true, maxlength: 2_000,
+            placeholder: "e.g. The untold story of how a garage hobby became a world-famous company",
+            class: "#{field_classes} resize-y" %>
+
+      <div class="flex flex-wrap items-end gap-4">
+        <div>
+          <%= form.label :tone, class: "block text-xs font-medium uppercase tracking-wide text-zinc-500" %>
+          <%= form.select :tone, tone_options, {}, class: "#{field_classes} min-w-40" %>
+        </div>
+
+        <div>
+          <%= form.label :target_length_minutes, "Length", class: "block text-xs font-medium uppercase tracking-wide text-zinc-500" %>
+          <%= form.select :target_length_minutes, target_length_options, {}, class: "#{field_classes} min-w-40" %>
+        </div>
+
+        <div class="ml-auto">
+          <%= form.submit "Write script", class: button_classes %>
+        </div>
+      </div>
+    <% end %>
+  </section>
+
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <div>
+      <h1 class="text-2xl font-semibold tracking-tight">Your projects</h1>
+      <p class="mt-1 text-sm text-zinc-400">Every video starts as a prompt. Review each step before you render.</p>
+    </div>
+
+    <nav class="flex gap-2 text-sm" aria-label="Filter projects">
+      <% [ [ "All", nil ], [ "In progress", "in_progress" ], [ "Rendered", "rendered" ] ].each do |label, value| %>
+        <%= link_to label, projects_path(filter: value),
+              class: "rounded-full px-3 py-1.5 #{@filter == value ? 'bg-white text-zinc-950 font-medium' : 'border border-white/10 text-zinc-300 hover:bg-white/5'}",
+              aria: { current: (@filter == value ? "page" : nil) } %>
+      <% end %>
+    </nav>
+  </div>
+
+  <% if @projects.any? %>
+    <ul class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" role="list">
+      <%= render partial: "projects/project_card", collection: @projects, as: :project %>
+    </ul>
+  <% else %>
+    <div class="rounded-2xl border border-dashed border-white/10 px-6 py-16 text-center">
+      <h2 class="text-lg font-semibold">
+        <%= @filter ? "No projects match this filter" : "No projects yet" %>
+      </h2>
+      <p class="mx-auto mt-2 max-w-sm text-sm text-zinc-400">
+        <%= @filter ? "Try another filter." : "Describe a video idea above and Scenivora will draft a narration script for you." %>
+      </p>
+    </div>
+  <% end %>
+</div>
