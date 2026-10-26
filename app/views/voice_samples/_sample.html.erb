@@ -1,0 +1,10 @@
+<% src = voice_sample_source(voice_name, local_assigns[:sample]) %>
+<% if src %>
+  <audio controls preload="none" data-sample-player <%= "autoplay" if local_assigns[:autoplay] %> class="h-8 w-40" src="<%= src %>"></audio>
+<% else %>
+  <%= link_to "Play", voice_samples_path(voice_name: voice_name),
+        class: "#{secondary_button_classes} px-3 py-1.5 text-xs", data: { turbo_method: :post } %>
+<% end %>
+<% if local_assigns[:error] %>
+  <p class="mt-1 text-xs text-red-300" role="alert"><%= local_assigns[:error] %></p>
+<% end %>

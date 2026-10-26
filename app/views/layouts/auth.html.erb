@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en" class="dark h-full">
+  <head>
+    <title><%= content_for(:title) || "Scenivora" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+
+    <link rel="icon" href="/icon.png" type="image/png">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+
+    <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
+    <%= javascript_importmap_tags %>
+  </head>
+
+  <body class="min-h-full bg-[#0c0e12] text-zinc-100 antialiased">
+    <div class="flex min-h-screen flex-col items-center justify-center px-4 py-12">
+      <div class="mb-8 text-center">
+        <span class="text-2xl font-bold tracking-tight text-indigo-600 dark:text-indigo-400">Scenivora</span>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">AI video creation for faceless YouTube creators</p>
+      </div>
+
+      <div class="w-full max-w-md rounded-2xl bg-[#161920] p-8 ring-1 ring-white/5">
+        <%= render "layouts/flash" %>
+        <%= yield %>
+      </div>
+    </div>
+  </body>
+</html>

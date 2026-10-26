@@ -1,0 +1,33 @@
+<div class="fixed inset-0 z-30 hidden bg-black/60 md:hidden" data-sidebar-target="backdrop" data-action="click->sidebar#close"></div>
+
+<aside id="sidebar"
+       class="fixed inset-y-0 left-0 z-40 flex w-60 -translate-x-full flex-col border-r border-white/5 bg-[#0f1116] transition-transform duration-200 md:sticky md:top-0 md:h-screen md:translate-x-0"
+       data-sidebar-target="panel">
+  <div class="flex h-16 items-center gap-2 px-5">
+    <span class="flex size-7 items-center justify-center rounded-md bg-[#f0b95a] text-zinc-950" aria-hidden="true">
+      <svg class="size-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+    </span>
+    <span class="font-semibold tracking-tight">Scenivora</span>
+  </div>
+
+  <nav class="flex-1 space-y-1 px-3 py-3 text-sm" aria-label="Main">
+    <%= link_to projects_path,
+          class: "flex items-center gap-3 rounded-lg px-3 py-2 font-medium #{controller_name == 'projects' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'}",
+          aria: { current: (controller_name == "projects" ? "page" : nil) } do %>
+      <span>Projects</span>
+    <% end %>
+
+    <% [ "Music library", "Credits & billing", "Analytics", "Settings" ].each do |label| %>
+      <span class="flex cursor-not-allowed items-center justify-between rounded-lg px-3 py-2 text-zinc-600" aria-disabled="true">
+        <span><%= label %></span>
+        <span class="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Soon</span>
+      </span>
+    <% end %>
+  </nav>
+
+  <div class="m-3 rounded-xl border border-white/5 bg-white/[0.03] p-4">
+    <p class="text-xs uppercase tracking-wide text-zinc-500">Credits this month</p>
+    <p class="mt-1 text-lg font-semibold"><%= number_with_delimiter(current_user.credits_balance) %> <span class="text-sm font-normal text-zinc-400">credits</span></p>
+    <p class="mt-1 text-xs text-zinc-500">Placeholder until billing is built</p>
+  </div>
+</aside>

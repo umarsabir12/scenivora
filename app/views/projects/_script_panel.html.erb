@@ -1,0 +1,66 @@
+<div id="script_panel" class="mt-5">
+  <% if local_assigns[:error] %>
+    <p class="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-300" role="alert"><%= local_assigns[:error] %></p>
+  <% end %>
+
+  <% if project.script_generating? %>
+    <div class="flex items-center gap-4 rounded-xl border border-dashed border-amber-400/40 bg-amber-400/5 p-6" role="status">
+      <svg class="size-6 shrink-0 animate-spin text-amber-300" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+      </svg>
+      <div>
+        <p class="font-medium text-amber-200">Generating...</p>
+        <p class="text-sm text-zinc-400">Writing your narration. This usually takes under a minute.</p>
+      </div>
+    </div>
+
+  <% elsif (script = project.latest_script) %>
+    <%= form_with model: script, url: project_script_path(project), method: :patch,
+          data: { controller: "script-autosave",
+                  "script-autosave-url-value": project_script_path(project),
+                  "script-autosave-delay-value": 800 } do |form| %>
+      <%= form.text_area :body, rows: 18, aria: { label: "Script narration" },
+            class: "block w-full rounded-xl border border-white/10 bg-[#0c0e12] p-5 text-[15px] leading-relaxed text-zinc-100 focus:border-amber-400/60 focus:outline-none focus:ring-2 focus:ring-amber-400/20",
+            data: { script_autosave_target: "field", action: "input->script-autosave#queue blur->script-autosave#save" } %>
+
+      <div class="mt-2 flex items-center justify-between text-xs text-zinc-500">
+        <span data-script-autosave-target="status" aria-live="polite">Saved</span>
+        <span>Version <%= script.version %> of <%= project.scripts.count %></span>
+      </div>
+    <% end %>
+
+    <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+      <p class="text-sm text-zinc-500">Edits save automatically. Rewrite keeps every version.</p>
+      <%# Turbo-method link, not button_to: a CSRF token rendered in a broadcast would not match the viewer's session. %>
+      <%= link_to "Rewrite", project_script_path(project), class: secondary_button_classes,
+            data: { turbo_method: :post, turbo_confirm: "Generate a new version of the script? Your current version will be kept." } %>
+    </div>
+
+    <% previous_versions = project.scripts.where.not(id: script.id).order(version: :desc) %>
+    <% if previous_versions.any? %>
+      <details class="mt-6 rounded-xl border border-white/5">
+        <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium text-zinc-300">
+          Previous versions (<%= previous_versions.size %>)
+        </summary>
+
+        <div class="space-y-2 border-t border-white/5 p-4">
+          <% previous_versions.each do |previous| %>
+            <details class="rounded-lg bg-white/[0.03] p-3">
+              <summary class="cursor-pointer text-sm text-zinc-400">
+                Version <%= previous.version %> · <%= number_with_delimiter(previous.word_count) %> words · <%= l(previous.created_at, format: :short) %>
+              </summary>
+              <p class="mt-3 whitespace-pre-line text-sm leading-relaxed text-zinc-300"><%= previous.body %></p>
+            </details>
+          <% end %>
+        </div>
+      </details>
+    <% end %>
+
+  <% else %>
+    <div class="mt-5 rounded-xl border border-dashed border-white/10 p-8 text-center">
+      <p class="text-sm text-zinc-400">No script yet. Generate one from your brief.</p>
+      <%= link_to "Generate script", project_script_path(project), class: "mt-4 #{button_classes}", data: { turbo_method: :post } %>
+    </div>
+  <% end %>
+</div>

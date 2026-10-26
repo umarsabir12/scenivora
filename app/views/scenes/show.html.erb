@@ -1,0 +1,22 @@
+<% content_for :title, "Scenes · #{@project.title} · Scenivora" %>
+
+<div class="mx-auto max-w-5xl space-y-6">
+  <header class="flex flex-wrap items-start justify-between gap-4">
+    <div class="min-w-0">
+      <%= link_to "← #{@project.title}", project_path(@project), class: "block max-w-xl truncate text-sm text-zinc-400 hover:text-zinc-200" %>
+      <h1 class="mt-2 text-2xl font-semibold tracking-tight">Scenes</h1>
+    </div>
+    <%= render "projects/status_badge", project: @project %>
+  </header>
+
+  <%= render "projects/wizard", project: @project, current: "Scenes" %>
+
+  <section class="rounded-2xl border border-dashed border-white/10 bg-[#161920] px-6 py-16 text-center">
+    <h2 class="text-lg font-semibold">Scenes are the next step</h2>
+    <p class="mx-auto mt-2 max-w-md text-sm text-zinc-400">
+      Your narration is confirmed. This step will split the script into scenes and find an image for each one.
+      It isn't built yet.
+    </p>
+    <%= link_to "Back to the voice", project_voice_path(@project), class: "mt-6 inline-flex #{secondary_button_classes}" %>
+  </section>
+</div>

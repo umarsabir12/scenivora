@@ -1,0 +1,40 @@
+<%# Steps after the current one show as disabled until their features ship. %>
+<nav aria-label="Production steps">
+  <ol class="grid grid-cols-2 gap-2 sm:grid-cols-6">
+    <% ProjectsHelper::WIZARD_STEPS.each.with_index(1) do |step, number| %>
+      <% active = step == current %>
+      <% done = wizard_step_done?(project, step) %>
+      <% path = wizard_step_path(project, step) %>
+      <% enabled = active || done || path.present? %>
+      <% state = if active
+                   "border-amber-400/50 bg-amber-400/10 text-amber-200"
+                 elsif done
+                   "border-emerald-500/30 bg-emerald-500/5 text-emerald-300"
+                 elsif enabled
+                   "border-white/10 text-zinc-200 hover:bg-white/5"
+                 else
+                   "cursor-not-allowed border-white/5 text-zinc-600"
+                 end %>
+      <% content = capture do %>
+        <span class="flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold <%= done ? 'bg-emerald-500/20 text-emerald-300' : (active ? 'bg-amber-400 text-zinc-950' : 'bg-white/5 text-zinc-500') %>">
+          <% if done %>
+            <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+          <% else %>
+            <%= number %>
+          <% end %>
+        </span>
+        <span><%= step %></span>
+      <% end %>
+
+      <%= tag.li class: "rounded-xl border px-3 py-2.5 text-sm font-medium #{state}",
+            aria: { current: ("step" if active), disabled: (true unless enabled) },
+            title: ("Coming soon" unless enabled) do %>
+        <% if path.present? && !active %>
+          <%= link_to content, path, class: "flex items-center gap-2" %>
+        <% else %>
+          <div class="flex items-center gap-2"><%= content %></div>
+        <% end %>
+      <% end %>
+    <% end %>
+  </ol>
+</nav>
