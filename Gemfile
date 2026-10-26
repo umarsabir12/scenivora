@@ -61,7 +61,7 @@ end
 
 gem "ruby-openai", "~> 8.3"
 
-gem "json", "~> 2.21"
+gem "json", "~> 3.1"
 
 gem "devise", "~> 5.0"
 
