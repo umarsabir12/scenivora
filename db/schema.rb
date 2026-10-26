@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_23_224603) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_26_183118) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -70,6 +70,19 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_23_224603) do
     t.index ["project_id"], name: "index_audio_tracks_on_project_id"
   end
 
+  create_table "credit_transactions", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.bigint "project_id"
+    t.integer "amount", null: false
+    t.integer "balance_after", null: false
+    t.string "reason", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["project_id"], name: "index_credit_transactions_on_project_id"
+    t.index ["user_id", "created_at"], name: "index_credit_transactions_on_user_id_and_created_at"
+    t.index ["user_id"], name: "index_credit_transactions_on_user_id"
+  end
+
   create_table "projects", force: :cascade do |t|
     t.bigint "user_id", null: false
     t.string "title", null: false
@@ -82,6 +95,37 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_23_224603) do
     t.datetime "updated_at", null: false
     t.index ["user_id", "created_at"], name: "index_projects_on_user_id_and_created_at"
     t.index ["user_id"], name: "index_projects_on_user_id"
+  end
+
+  create_table "scene_images", force: :cascade do |t|
+    t.bigint "scene_id", null: false
+    t.string "provider", null: false
+    t.string "image_url"
+    t.string "page_url"
+    t.string "credit"
+    t.string "license"
+    t.boolean "selected", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.text "prompt"
+    t.index ["scene_id"], name: "index_scene_images_on_scene_id"
+  end
+
+  create_table "scenes", force: :cascade do |t|
+    t.bigint "project_id", null: false
+    t.integer "position", null: false
+    t.text "text", null: false
+    t.integer "start_ms", null: false
+    t.integer "duration_ms", null: false
+    t.string "search_query"
+    t.text "search_error"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.jsonb "plan", default: {}, null: false
+    t.string "ai_status"
+    t.text "ai_error"
+    t.index ["project_id", "position"], name: "index_scenes_on_project_id_and_position", unique: true
+    t.index ["project_id"], name: "index_scenes_on_project_id"
   end
 
   create_table "scripts", force: :cascade do |t|
@@ -118,6 +162,10 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_23_224603) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "api_usages", "projects"
   add_foreign_key "audio_tracks", "projects"
+  add_foreign_key "credit_transactions", "projects", on_delete: :nullify
+  add_foreign_key "credit_transactions", "users"
   add_foreign_key "projects", "users"
+  add_foreign_key "scene_images", "scenes"
+  add_foreign_key "scenes", "projects"
   add_foreign_key "scripts", "projects"
 end

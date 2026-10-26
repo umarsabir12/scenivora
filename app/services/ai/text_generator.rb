@@ -18,15 +18,19 @@ module Ai
       @client = client
     end
 
-    def call(system_prompt:, user_prompt:, temperature: 0.8)
-      response = client.chat(parameters: {
+    # json: true asks the model for a JSON object. The prompt must also say so.
+    def call(system_prompt:, user_prompt:, temperature: 0.8, json: false)
+      parameters = {
         model: model,
         temperature: temperature,
         messages: [
           { role: "system", content: system_prompt },
           { role: "user", content: user_prompt }
         ]
-      })
+      }
+      parameters[:response_format] = { type: "json_object" } if json
+
+      response = client.chat(parameters: parameters)
 
       build_result(response)
     rescue OpenAI::Error, Faraday::Error => e

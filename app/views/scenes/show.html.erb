@@ -1,22 +1,207 @@
 <% content_for :title, "Scenes · #{@project.title} · Scenivora" %>
+<%= turbo_stream_from @project, :scenes %>
 
 <div class="mx-auto max-w-5xl space-y-6">
   <header class="flex flex-wrap items-start justify-between gap-4">
     <div class="min-w-0">
       <%= link_to "← #{@project.title}", project_path(@project), class: "block max-w-xl truncate text-sm text-zinc-400 hover:text-zinc-200" %>
-      <h1 class="mt-2 text-2xl font-semibold tracking-tight">Scenes</h1>
     </div>
     <%= render "projects/status_badge", project: @project %>
   </header>
 
   <%= render "projects/wizard", project: @project, current: "Scenes" %>
 
-  <section class="rounded-2xl border border-dashed border-white/10 bg-[#161920] px-6 py-16 text-center">
-    <h2 class="text-lg font-semibold">Scenes are the next step</h2>
-    <p class="mx-auto mt-2 max-w-md text-sm text-zinc-400">
-      Your narration is confirmed. This step will split the script into scenes and find an image for each one.
-      It isn't built yet.
+  <% searching = @project.settings["scenes_searching"] %>
+  <% planning_failed = @scenes.any? { |scene| scene.search_error == FindSceneImagesJob::PLANNING_FAILED } %>
+
+  <% if !@track&.confirmed? %>
+    <p class="rounded-2xl border border-dashed border-white/10 bg-[#161920] p-6 text-sm text-zinc-400">
+      Confirm the narration voice first. The scene timing comes from the confirmed narration's length.
+      <%= link_to "Go to Voice", project_voice_path(@project), class: "ml-1 text-amber-300 hover:underline" %>
     </p>
-    <%= link_to "Back to the voice", project_voice_path(@project), class: "mt-6 inline-flex #{secondary_button_classes}" %>
-  </section>
+  <% elsif searching %>
+    <p class="rounded-2xl border border-dashed border-amber-400/40 bg-amber-400/5 p-6 text-sm font-medium text-amber-300" role="status">
+      Finding images... This page refreshes when it's done.
+    </p>
+  <% elsif @scenes.empty? %>
+    <section class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/5 bg-[#161920] p-6">
+      <p class="max-w-xl text-sm text-zinc-400">
+        Each scene is about 10 seconds of narration. A short plan picks search terms for every scene, then free
+        images are found on Wikimedia Commons.
+      </p>
+      <%= button_to "Create scene · est. #{planner_estimate_label(@project, @track)}", project_scenes_path(@project),
+            method: :post, class: button_classes %>
+    </section>
+  <% end %>
+
+  <% if planning_failed && !searching %>
+    <section class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
+      <p class="text-sm text-red-300">Scene planning failed, so no images were searched.</p>
+      <%= button_to "Retry planning · est. #{planner_estimate_label(@project, @track)}", project_scenes_path(@project),
+            method: :post, class: button_classes %>
+    </section>
+  <% end %>
+
+  <% if @scenes.any? && @current_scene %>
+    <% counts = scene_image_counts(@scenes) %>
+
+    <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <section class="min-w-0 space-y-4" aria-labelledby="scenes-heading">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 id="scenes-heading" class="text-2xl font-semibold tracking-tight">Scenes</h2>
+            <p class="mt-1 text-sm text-zinc-400">
+              <%= pluralize(@scenes.size, "scene") %> · <%= format_timecode(@scenes.last.end_ms) %> narration
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2 text-xs font-medium">
+            <span class="rounded-full bg-emerald-500/15 px-2.5 py-1 text-emerald-300"><%= pluralize(counts[:free], "free image") %></span>
+            <% if counts[:ai].positive? %>
+              <span class="rounded-full bg-violet-500/15 px-2.5 py-1 text-violet-300"><%= pluralize(counts[:ai], "AI image") %></span>
+            <% end %>
+            <% if counts[:uploaded].positive? %>
+              <span class="rounded-full bg-zinc-700 px-2.5 py-1 text-zinc-200"><%= counts[:uploaded] %> uploaded</span>
+            <% end %>
+            <% if counts[:missing].positive? %>
+              <span class="rounded-full bg-amber-400/15 px-2.5 py-1 text-amber-300"><%= counts[:missing] %> need an image</span>
+            <% end %>
+          </div>
+        </div>
+
+        <ol class="space-y-3">
+          <% @scenes.each do |scene| %>
+            <% image = scene.selected_image %>
+            <% current = scene == @current_scene %>
+            <li id="scene_<%= scene.id %>"
+                class="flex flex-col gap-4 rounded-2xl border p-4 sm:flex-row <%= current ? "border-amber-400/60 bg-amber-400/[0.03]" : "border-white/5 bg-[#161920]" %>"
+                aria-current="<%= current ? "true" : "false" %>">
+              <div class="relative aspect-video w-full shrink-0 overflow-hidden rounded-xl bg-white/5 sm:w-48">
+                <% if image %>
+                  <%= image_tag scene_image_src(image), alt: "Image for scene #{scene.position}", loading: "lazy",
+                        class: "h-full w-full object-cover #{"opacity-30" if scene.ai_generating?}" %>
+                <% elsif !scene.ai_generating? %>
+                  <div class="flex h-full items-center justify-center p-3 text-center text-xs text-zinc-500">No image yet</div>
+                <% end %>
+
+                <%# The job refreshes the page when it finishes, which removes this loader. %>
+                <% if scene.ai_generating? %>
+                  <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40 text-xs font-medium text-violet-200"
+                       role="status" aria-label="Generating an AI image for scene <%= scene.position %>">
+                    <%= render "scenes/spinner" %>
+                    Generating image...
+                  </div>
+                <% end %>
+              </div>
+
+              <div class="min-w-0 flex-1 space-y-2">
+                <div class="flex flex-wrap items-center gap-2 text-xs">
+                  <span class="font-medium text-zinc-300">Scene <%= scene.position %> · <%= format_timecode(scene.start_ms) %></span>
+                  <% if image %>
+                    <%= image_source_badge(image) %>
+                    <span class="text-zinc-500"><%= image.license %></span>
+                  <% end %>
+                </div>
+
+                <p class="text-sm text-zinc-200"><%= scene.text %></p>
+
+                <% if image %>
+                  <p class="truncate text-xs text-zinc-500">
+                    Credit:
+                    <% if image.page_url.present? %>
+                      <%= link_to image.credit, image.page_url, target: "_blank", rel: "noopener", class: "hover:text-zinc-300 hover:underline" %>
+                    <% else %>
+                      <%= image.credit %>
+                    <% end %>
+                  </p>
+                <% elsif scene.search_error.present? %>
+                  <p class="text-xs text-red-300" role="alert"><%= scene.search_error %></p>
+                <% else %>
+                  <p class="text-xs text-zinc-500">No free image found. Search again, or upload your own. AI images are not built yet.</p>
+                <% end %>
+
+                <div class="flex flex-wrap gap-2 pt-1">
+                  <%= link_to "Swap image", project_scenes_path(@project, scene: scene.id, anchor: "swap"), class: small_button_classes %>
+
+                  <%= form_with url: scene_images_path(scene), multipart: true, data: { controller: "auto-submit" } do |form| %>
+                    <label class="<%= small_button_classes %>">
+                      Upload
+                      <%= form.file_field :file, accept: SceneImage::UPLOAD_TYPES.join(","), class: "sr-only",
+                            data: { action: "change->auto-submit#submit" } %>
+                    </label>
+                  <% end %>
+
+                  <% if image %>
+                    <%= button_to "Remove", scene_clear_image_path(scene), method: :delete,
+                          class: "rounded-lg px-3 py-1.5 text-xs font-semibold text-zinc-400 hover:bg-white/5 hover:text-zinc-200 cursor-pointer" %>
+                  <% end %>
+                </div>
+              </div>
+            </li>
+          <% end %>
+        </ol>
+      </section>
+
+      <aside id="swap" class="self-start rounded-2xl border border-white/5 bg-[#161920] p-5 lg:sticky lg:top-24" aria-labelledby="swap-heading">
+        <h2 id="swap-heading" class="text-lg font-semibold">Swap image · Scene <%= @current_scene.position %></h2>
+        <p class="mt-1 text-sm text-zinc-400">Free sources first. AI only when nothing fits.</p>
+
+        <% tab = "rounded-lg px-3 py-1.5" %>
+        <% active_tab = "#{tab} bg-white font-medium text-zinc-950" %>
+        <% idle_tab = "#{tab} border border-white/10 text-zinc-300 hover:bg-white/5" %>
+        <nav class="mt-4 flex flex-wrap gap-2 text-sm" aria-label="Image sources">
+          <%= link_to "Commons", project_scenes_path(@project, scene: @current_scene.id, anchor: "swap"),
+                class: (@source == "commons" ? active_tab : idle_tab), aria: { current: (@source == "commons" ? "page" : nil) } %>
+          <span aria-disabled="true" title="Skipped for now" class="<%= tab %> cursor-not-allowed border border-white/10 text-zinc-600">Pixabay</span>
+          <%= link_to "AI generate", project_scenes_path(@project, scene: @current_scene.id, source: "ai", anchor: "swap"),
+                class: (@source == "ai" ? active_tab : idle_tab), aria: { current: (@source == "ai" ? "page" : nil) } %>
+        </nav>
+
+        <% if @source == "ai" %>
+          <%= render "scenes/ai_generate", scene: @current_scene %>
+        <% else %>
+          <%= form_with url: scene_search_path(@current_scene), class: "mt-4 flex gap-2" do |form| %>
+            <%= form.label :query, "Search Wikimedia Commons", class: "sr-only" %>
+            <%= form.search_field :query, value: @current_scene.search_query, placeholder: "Search Wikimedia Commons",
+                  class: field_classes.sub("mt-1 ", "") %>
+            <%= form.submit "Search", class: small_button_classes %>
+          <% end %>
+        <% end %>
+
+        <% candidates = @current_scene.images %>
+        <% if candidates.any? %>
+          <div class="mt-4 grid grid-cols-2 gap-3">
+            <% candidates.each do |candidate| %>
+              <%= button_to select_scene_image_path(@current_scene, candidate), method: :post,
+                    title: "#{candidate.credit} · #{candidate.license}",
+                    aria: { pressed: candidate.selected? },
+                    class: "block w-full cursor-pointer overflow-hidden rounded-xl ring-2 #{candidate.selected? ? "ring-amber-400" : "ring-transparent hover:ring-white/20"}" do %>
+                <%= image_tag scene_image_src(candidate), alt: "Candidate by #{candidate.credit}", loading: "lazy",
+                      class: "aspect-video w-full object-cover" %>
+              <% end %>
+            <% end %>
+          </div>
+        <% else %>
+          <p class="mt-4 rounded-xl border border-dashed border-white/10 p-4 text-sm text-zinc-400">
+            No candidates for this scene. Try another search, or upload your own image.
+          </p>
+        <% end %>
+
+        <p class="mt-4 text-xs text-zinc-500">
+          Only free-licence images (Public Domain, CC0, CC BY, CC BY-SA). Each image keeps its credit for your video description.
+        </p>
+
+        <div class="mt-5 border-t border-white/5 pt-5">
+          <% if counts[:missing].zero? %>
+            <%= button_to "Approve scenes & continue", approve_project_scenes_path(@project), method: :post,
+                  class: "#{button_classes} w-full" %>
+          <% else %>
+            <button type="button" disabled class="<%= button_classes %> w-full">Approve scenes &amp; continue</button>
+            <p class="mt-2 text-center text-xs text-zinc-500">
+              <%= pluralize(counts[:missing], "scene") %> still <%= counts[:missing] == 1 ? "needs" : "need" %> an image.
+            </p>
+          <% end %>
+        </div>
+      </aside>
+    </div>
+  <% end %>
 </div>

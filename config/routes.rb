@@ -11,7 +11,19 @@ Rails.application.routes.draw do
     resource :voice, only: %i[show create] do
       post :confirm
     end
-    resource :scenes, only: :show
+    resource :scenes, only: %i[show create] do
+      post :approve
+    end
+    resource :music, only: :show, controller: "music"
+  end
+
+  scope "scenes/:scene_id", as: "scene" do
+    resources :images, only: :create, controller: "scene_images" do
+      post :select, on: :member
+    end
+    post "search", to: "scene_images#search", as: :search
+    delete "image", to: "scene_images#clear", as: :clear_image
+    post "ai_image", to: "scene_images#generate", as: :ai_image
   end
 
   resources :voice_samples, only: :create

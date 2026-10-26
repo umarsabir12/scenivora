@@ -10,7 +10,7 @@ music and a rendered MP4. The creator uploads the video to YouTube themselves.
 | ---- | -------------------------------------- | ------------ |
 | 1    | Auth, layout, projects, script         | Done         |
 | 2    | Voice generation                       | Done         |
-| 3    | Scenes and images                      | Placeholder screen only |
+| 3    | Scenes and images                      | Step 1 done (free images); AI fallback not started |
 | 4    | Background music                       | Not started  |
 | 5    | Render MP4                             | Not started  |
 | 6    | Title, description, tags, publish      | Not started  |
@@ -79,7 +79,10 @@ from the real environment. `.env.example` lists every setting.
 | `OPENAI_API_KEY`     | Yes, for AI features | none   | Authenticates every OpenAI request                   |
 | `OPENAI_TEXT_MODEL`  | No       | `gpt-4o-mini` | Model used to write scripts                          |
 | `OPENAI_SPEECH_MODEL`| No       | `tts-1`       | Model used for narration and voice samples           |
+| `OPENAI_IMAGE_MODEL` | No       | `gpt-image-1-mini` | Model used for AI scene images                  |
+| `CREDITS_PER_AI_IMAGE` | No     | `5` (placeholder) | Credits charged per AI image                     |
 | `PORT`               | No       | `3000`        | Port for `bin/dev`                                   |
+| `PIXABAY_API_KEY`    | No       | none          | Enables Pixabay in scene image search (free account) |
 
 Production also needs `SCENIVORA_DATABASE_PASSWORD` (see `config/database.yml`).
 
@@ -126,7 +129,7 @@ disabled until they are built.
 ## Tests and checks
 
 ```sh
-bin/rails test        # 96 tests: models, services, jobs, controllers, auth flows
+bin/rails test        # 124 tests: models, services, jobs, controllers, auth flows
 bin/rubocop           # style (rubocop-rails-omakase)
 bin/brakeman          # security scan
 ```
@@ -158,6 +161,65 @@ are replaced with fakes.
 The job calls `Ai::TextGenerator` with a fixed system prompt (hook in the first 15 seconds,
 story structure with a turning point, about 150 words per minute, plain narration only), saves
 the next `Script` version, records an `ApiUsage` row, and broadcasts the result over Turbo Streams.
+
+### Scenes and free images (step 3, part 1)
+
+**Create scene** (enabled once the voice is confirmed) runs `FindSceneImagesJob`:
+
+1. `NarrationScenes` splits the confirmed narration into about 10-second scenes. The count comes
+   from the narration's real duration, and scenes break on sentence boundaries. Each scene's time
+   is its share of the words, scaled to the measured duration.
+2. `Scene.query_for` builds a search from each scene's text: capitalised names first, then the
+   longest other words, without common words. This is a stand-in until the planner exists.
+3. `Media::CommonsSearch` (Wikimedia Commons, no key) and `Media::PixabaySearch` (only when
+   `PIXABAY_API_KEY` is set) return up to three candidates per scene. Commons is tried first.
+   Only JPEG, PNG and WebP files are kept.
+4. Each candidate is stored as a `SceneImage` with its source page, credit and license. The first
+   candidate is selected. Images are linked, not downloaded, until the render step needs them.
+
+A failed search records a message on that scene and leaves the others alone. A scene with no
+results shows "No free image found" and a note that the AI fallback is not built yet. The
+`scenes_searching` flag in project settings shows "Finding images..." while the job runs.
+
+Image search makes no OpenAI calls. Commons and Pixabay are free to query, within their rate limits.
+
+### Scene images (step 3)
+
+`FindSceneImagesJob` (started by **Create scene**) runs in this order:
+1. Splits the confirmed narration into scenes of about 10 seconds (`NarrationScenes`, no API calls).
+2. Makes one planner call (`Ai::ScenePlanner`) that returns search queries for each scene. The
+   planner is required: if it fails, each scene shows "Scene planning failed. Create scene again
+   to retry." and no image search runs.
+3. Searches Wikimedia Commons for each scene and stores up to 3 candidates with their credit,
+   license and source page. Only Public domain, CC0, CC BY and CC BY-SA images are kept. Pixabay
+   runs only when `PIXABAY_API_KEY` is set. Vision checks are not built.
+
+**Review.** The Scenes page lists each scene as a card: thumbnail, source badge, license, credit and
+narration, with **Swap image**, **Upload** and **Remove**. **Swap image** opens the side panel for that
+scene, showing its candidates (click one to select it) and a free Commons search box. Uploads accept
+JPEG, PNG or WebP up to 10 MB. **Approve scenes & continue** is enabled once every scene has an image;
+it sets the project to `scenes_ready` and opens the Music step (a placeholder for now).
+
+**AI images.** The swap panel's **AI generate** tab lets you describe an image and generate it for
+credits (`CreditPricing.ai_image`, a placeholder of 5 until pricing is decided). Credits are charged
+when you click **Generate**, and refunded automatically if generation fails. The prompt starts from
+the planner's description of the scene, and safety rules are always added (no recognizable faces of
+real people, no text or logos). Scenes the planner marked as showing a real person can't use AI
+images. AI images are stored in Active Storage, labelled **AI**, and the project's
+`settings["ai_images"]` is set so the description can say so.
+
+**Credits.** `users.credits_balance` is the balance; `credit_transactions` records every change
+(grants positive, charges negative, with the balance after). Charges lock the user row, so two
+requests can't spend the same credits. Grant credits with
+`bin/rails "credits:grant[test@example.com,20]"`. There is no purchase flow yet.
+
+Commons uses `api.wikimedia.org` (search), `en.wikipedia.org` (metadata and license) and
+`upload.wikimedia.org` (files). These work from networks that block `commons.wikimedia.org`.
+Requests back off on HTTP 429 using `Retry-After` (at most 3 attempts).
+
+The planner runs only when the script or the narration length changes. Repeated clicks reuse the
+stored plans, so they don't pay again. Each planner call is recorded in `ApiUsage` as `scene_plan`.
+Tests use fakes and clear `OPENAI_API_KEY`, so they never make a paid call.
 
 ### Voice generation
 
@@ -199,7 +261,8 @@ can be swapped in one place:
 | GET               | `/projects/:id`                | Project page: script, wizard, narration voice |
 | POST, PATCH       | `/projects/:id/script`         | Generate or rewrite; autosave             |
 | GET               | `/projects/:id/voice`          | Voice tab: generated voice and narration voice box |
-| GET               | `/projects/:id/scenes`         | Scenes placeholder (step 3, not built yet) |
+| GET               | `/projects/:id/scenes`         | Scenes: timed scenes and their free images |
+| POST              | `/projects/:id/scenes`         | Create scenes and find free images (background job) |
 | POST              | `/projects/:id/voice`          | Generate, regenerate, retry               |
 | POST              | `/projects/:id/voice/confirm`  | Confirm the generated voice               |
 | POST              | `/voice_samples?voice_name=…`  | Generate (once) and play a voice sample   |

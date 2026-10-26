@@ -19,6 +19,7 @@ module ProjectsHelper
   ].freeze
 
   WIZARD_STEPS = %w[Script Voice Scenes Music Render Publish].freeze
+  SCENES_APPROVED_STATUSES = %w[scenes_ready media_ready rendering rendered].freeze
 
   def status_badge(project, id: nil)
     tag.span(project.status.humanize, id: id,
@@ -35,6 +36,7 @@ module ProjectsHelper
     when "Script" then project_path(project)
     when "Voice" then project_voice_path(project) if project.voice_available?
     when "Scenes" then project_scenes_path(project) if project.voice_track&.confirmed?
+    when "Music" then project_music_path(project) if SCENES_APPROVED_STATUSES.include?(project.status)
     end
   end
 
@@ -42,6 +44,7 @@ module ProjectsHelper
     case step
     when "Script" then project.latest_script.present?
     when "Voice" then project.voice_track&.confirmed? || false
+    when "Scenes" then SCENES_APPROVED_STATUSES.include?(project.status)
     else false
     end
   end

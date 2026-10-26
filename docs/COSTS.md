@@ -45,10 +45,25 @@ the same as the first voice. Voice samples are paid once per voice and then reus
 they are static files in `public/voice_samples/`, so no request goes to OpenAI. Regenerate a sample
 only if you change its text or voice list.
 
+**Scene images** cost nothing today. Wikimedia Commons and Pixabay are free to search, and the app
+doesn't call any paid service to find images. Two costs come later:
+- A vision check on each candidate image, not built yet. Its estimate will go on the Create scene
+  button once its price is confirmed.
+- AI-generated images, if enabled, cost per image. Not built yet.
+
 **Speed previews** are played in the browser, so they cost nothing. Only the final narration sends
 the chosen speed to OpenAI.
 **Budget guide:** at about $0.07 per 5-minute video, $5 of credit covers roughly 70 videos of that
 length, or several hundred scripts with no voice-over.
+
+## AI scene images
+
+- Model: `gpt-image-1-mini` (cheapest image model on OpenAI's pricing page, checked 2026-10-26):
+  $2.00 per 1M text input tokens, $8.00 per 1M image output tokens. The page gives no per-image price.
+- The app records each image's real cost from the token usage the API returns (`ApiUsage`, operation
+  `ai_image`). No image has been generated yet, so there is no measured per-image cost.
+- Users pay in app credits (`CREDITS_PER_AI_IMAGE`, placeholder 5). The dollar value of a credit is
+  not decided.
 
 ## Free items
 
@@ -79,6 +94,7 @@ Record real charges here as you incur them. Use the OpenAI dashboard for the amo
 | 2026-10-24 | Test script generation (project 4) | $0.00        | Rejected with HTTP 429: no API credit. Retry after adding credits. |
 | 2026-10-24 | Two test script generations       | $0.00052     | Versions 1 and 2 of project 4 (estimate from our price constants) |
 | 2026-10-24 | Voice sample files (9 voices)     | $0.00525     | One-time generation, saved to public/voice_samples |
+| 2026-10-26 | Scene image search (Commons, Pixabay) | $0.00 | Free sources, no paid API calls |
 | 2026-10-24 | Voice name check (rejected calls, one 1-character call) | $0.00002 | Confirmed tts-1's accepted voice names |
 |            |                                   |              |                                |
 

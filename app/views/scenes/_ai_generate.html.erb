@@ -1,0 +1,40 @@
+<% cost = CreditPricing.ai_image %>
+<% balance = current_user.credits_balance %>
+
+<div class="mt-4 space-y-3">
+  <% if !scene.ai_allowed? %>
+    <p class="rounded-xl border border-white/10 p-4 text-sm text-zinc-400">
+      AI images are turned off for this scene because it shows a real person. Search Commons or upload an image instead.
+    </p>
+  <% elsif scene.ai_generating? %>
+    <p class="flex items-center gap-3 rounded-xl border border-dashed border-violet-400/40 bg-violet-500/5 p-4 text-sm font-medium text-violet-300" role="status">
+      <%= render "scenes/spinner" %>
+      Generating an image... This page refreshes when it's ready.
+    </p>
+  <% else %>
+    <% if scene.ai_status == "failed" %>
+      <p class="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300" role="alert">
+        <%= scene.ai_error.presence || "Image generation failed." %> Your credits were refunded.
+      </p>
+    <% end %>
+
+    <%= form_with url: scene_ai_image_path(scene), class: "space-y-3" do |form| %>
+      <%= form.label :prompt, "Describe the image", class: "block text-xs font-medium uppercase tracking-wide text-zinc-500" %>
+      <%= form.text_area :prompt, rows: 4, maxlength: SceneImagesController::MAX_PROMPT_LENGTH, required: true,
+            value: scene.plan["visual_intent"].presence || scene.text, class: field_classes %>
+      <p class="text-xs text-zinc-500">
+        Real people are never shown with a recognizable face. Text, logos and watermarks are left out.
+      </p>
+
+      <% if balance >= cost %>
+        <%= form.submit "Generate · #{pluralize(cost, "credit")}", class: "#{button_classes} w-full",
+              data: { turbo_confirm: "Generate an AI image for #{pluralize(cost, "credit")}? Each try costs credits." } %>
+      <% else %>
+        <button type="button" disabled class="<%= button_classes %> w-full">Generate · <%= pluralize(cost, "credit") %></button>
+      <% end %>
+      <p class="text-center text-xs <%= balance >= cost ? "text-zinc-500" : "text-amber-300" %>">
+        You have <%= pluralize(balance, "credit") %>.<%= " Not enough for an AI image." if balance < cost %>
+      </p>
+    <% end %>
+  <% end %>
+</div>

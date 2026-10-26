@@ -2,6 +2,10 @@ ENV["RAILS_ENV"] ||= "test"
 require_relative "../config/environment"
 require "rails/test_help"
 
+# dotenv loads a real key from .env. Clear it so no test can reach OpenAI by accident; a
+# missing key makes any unstubbed call fail fast instead of costing money.
+ENV.delete("OPENAI_API_KEY")
+
 module ActiveSupport
   class TestCase
     # Run tests in parallel with specified workers

@@ -7,6 +7,8 @@ class Project < ApplicationRecord
   has_many :scripts, -> { order(:version) }, dependent: :destroy, inverse_of: :project
   has_many :api_usages, dependent: :destroy
   has_many :audio_tracks, dependent: :destroy
+  has_many :credit_transactions, dependent: :nullify
+  has_many :scenes, -> { order(:position) }, dependent: :destroy
   has_one :voice_track, -> { voice }, class_name: "AudioTrack", dependent: :destroy, inverse_of: :project
 
   enum :status, {
@@ -34,8 +36,9 @@ class Project < ApplicationRecord
     (scripts.maximum(:version) || 0) + 1
   end
 
+  # Any status past draft has a script, so the Voice step stays reachable in later steps too.
   def voice_available?
-    script_ready? || voice_ready?
+    !draft?
   end
 
   def script_generating?
