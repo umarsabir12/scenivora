@@ -53,6 +53,12 @@ Deferred
 - [ ] Record voice-sample generation in `ApiUsage` (samples have no project today).
 - [ ] Confirm current prices for `gpt-4o-mini` and `tts-1` against OpenAI's pricing page.
 
+## Platform
+
+- [x] Ruby 3.2.2 to 3.4.12 (`.ruby-version`, Dockerfile). Tests clean with deprecation warnings on.
+- [ ] Rails 8.0 to 8.1 before 2026-11-07, when 8.0 support ends.
+- [ ] Ruby 4.0 after Rails 8.1 (4.0 moves more standard libraries into separate gems).
+
 ## Later steps
 
 - [x] Step 4: background music (Commons library or upload, volume).
@@ -67,8 +73,7 @@ Deferred
 - [ ] Caption keywords from the planner, not just numbers and capitalised words.
 - [ ] Hook text from the planner, so the first render has a hook (today it uses the YouTube title,
       which exists only after **Write details**).
-- [ ] Fix the plain Homebrew `ffmpeg` on this machine: `brew upgrade ffmpeg` (it failed while
-      ghcr.io was unreachable; installing ffmpeg-full upgraded a library it depends on).
+- [x] Fixed the plain Homebrew `ffmpeg` on this machine (`brew upgrade ffmpeg` to 9.0.2).
 - [ ] Captions option A: word-accurate timings from transcription (Whisper, $0.006/minute on
       OpenAI's pricing page, checked 2026-10-27). Confirm word timestamps are still returned before building.
 - [ ] Upload the SRT as a YouTube caption track automatically (needs the youtube.force-ssl OAuth scope).

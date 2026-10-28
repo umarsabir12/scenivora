@@ -19,7 +19,7 @@ All six wizard steps work. One-click YouTube upload and analytics come later (se
 
 ## Requirements
 
-- Ruby 3.2.2 (see `.ruby-version`)
+- Ruby 3.4.12 (see `.ruby-version`; with rbenv: `rbenv install 3.4.12`)
 - PostgreSQL running locally (developed against 15), with a role that can create databases
 - ffmpeg with libass (for captions), H.264 and AAC: `brew install ffmpeg-full`. It installs next to
   any existing ffmpeg (keg-only) and the app finds it automatically at
