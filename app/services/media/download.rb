@@ -17,10 +17,10 @@ module Media
             raise Media::Error, "Too many redirects from #{uri.host}" if redirects >= MAX_REDIRECTS
 
             return to_file(URI.join(url, response["location"]).to_s, path, max_bytes: max_bytes, redirects: redirects + 1)
-          when Net::HTTPTooManyRequests
-            raise Media::Error, "#{uri.host} is rate limiting downloads" if attempts >= HttpJson::MAX_ATTEMPTS
+          when Net::HTTPTooManyRequests, Net::HTTPServerError
+            raise Media::Error, "#{uri.host} responded with #{response.code}" if attempts >= HttpJson::MAX_ATTEMPTS
 
-            sleep(HttpJson.retry_wait(response))
+            sleep(HttpJson.retry_wait(response, attempts))
             return to_file(url, path, max_bytes: max_bytes, redirects: redirects, attempts: attempts + 1)
           when Net::HTTPSuccess
             write_body(response, path, max_bytes)

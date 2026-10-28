@@ -44,6 +44,13 @@ class Project < ApplicationRecord
     (scripts.maximum(:version) || 0) + 1
   end
 
+  IMAGE_MODES = %w[real_first ai_all].freeze
+
+  # "real_first" (default): checked real pictures, AI suggested where none fits. "ai_all": AI for every scene.
+  def image_mode
+    settings["image_mode"].presence_in(IMAGE_MODES) || "real_first"
+  end
+
   # Captions are burned into the video unless the user turned them off.
   def captions_enabled?
     settings["captions"] != false

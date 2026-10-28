@@ -33,8 +33,9 @@ class SceneImagesControllerTest < ActionDispatch::IntegrationTest
   test "selecting a candidate makes it the only selected image" do
     post select_scene_image_url(@scene, @other)
 
-    assert_redirected_to project_scenes_url(@project, scene: @scene.id, anchor: "swap")
+    assert_redirected_to project_scenes_url(@project, scene: @scene.id)
     assert @other.reload.selected?
+    assert_equal "chosen", @scene.reload.media_check
     assert_not @picked.reload.selected?
   end
 
@@ -108,7 +109,7 @@ class SceneImagesControllerTest < ActionDispatch::IntegrationTest
 
     assert_equal 10 - CreditPricing.ai_image, @user.reload.credits_balance
     assert @scene.reload.ai_generating?
-    assert_redirected_to project_scenes_url(@project, scene: @scene.id, source: "ai", anchor: "swap")
+    assert_redirected_to project_scenes_url(@project, scene: @scene.id, source: "ai")
   end
 
   test "generating without enough credits is refused and charges nothing" do
@@ -121,15 +122,15 @@ class SceneImagesControllerTest < ActionDispatch::IntegrationTest
     assert_not @scene.reload.ai_generating?
   end
 
-  test "a scene the planner marked as a real person cannot use AI images" do
+  test "a scene the planner marked as a real person can still generate, as an illustration" do
     @user.grant_credits!(10, reason: "manual_grant")
     @scene.update!(plan: { "ai_fallback_allowed" => false })
 
-    assert_no_enqueued_jobs do
-      post scene_ai_image_url(@scene), params: { prompt: "A portrait" }
+    assert_enqueued_with(job: GenerateSceneImageJob) do
+      post scene_ai_image_url(@scene), params: { prompt: "Jinnah addressing a crowd" }
     end
 
-    assert_equal 10, @user.reload.credits_balance
+    assert_equal "illustration", @scene.reload.ai_style
   end
 
   test "a second request while one is generating does not charge again" do
@@ -150,5 +151,23 @@ class SceneImagesControllerTest < ActionDispatch::IntegrationTest
 
     assert_equal "Describe the image you want.", flash[:alert]
     assert_equal 10, @user.reload.credits_balance
+  end
+
+  test "a video search adds video candidates and keeps the images" do
+    found = Media::VideoResult.new(provider: "wikimedia_commons", title: "Partition refugees", video_url: "https://upload.wikimedia.org/refugees.webm",
+                                   poster_url: "https://upload.wikimedia.org/refugees.jpg", page_url: "https://commons.example",
+                                   credit: "Archive", license: "Public domain", duration_ms: 120_000)
+    search = Object.new
+    search.define_singleton_method(:search) { |_query, limit:| [ found ] }
+
+    with_stubbed_new(Media::CommonsVideoSearch, search) do
+      post scene_search_url(@scene), params: { query: "partition refugees", kind: "video" }
+    end
+
+    assert_redirected_to project_scenes_url(@project, scene: @scene.id, source: "video")
+    video = @scene.images.find_by(media_type: "video")
+    assert_equal "https://upload.wikimedia.org/refugees.webm", video.image_url
+    assert_equal 30_000, video.clip_start_ms
+    assert_equal 2, @scene.images.where(media_type: "image").count
   end
 end

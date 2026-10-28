@@ -6,7 +6,10 @@ class GenerateSceneImageJobTest < ActiveJob::TestCase
       @error = error
     end
 
-    def call(prompt:)
+    attr_reader :style
+
+    def call(prompt:, style:)
+      @style = style
       raise @error if @error
 
       Ai::ImageGenerator::Result.new(image: "\x89PNG fake".b, content_type: "image/png", provider: "openai",
@@ -54,5 +57,15 @@ class GenerateSceneImageJobTest < ActiveJob::TestCase
     assert_equal "Image generation failed: rejected by safety system", @scene.ai_error
     assert @old.reload.selected?
     assert_nil @project.api_usages.find_by(operation: "ai_image")
+  end
+
+  test "a real-person scene is generated as an illustration and labelled so" do
+    @scene.update!(plan: { "ai_fallback_allowed" => false })
+    generator = FakeGenerator.new
+
+    run_job(generator)
+
+    assert_equal "illustration", generator.style
+    assert_equal "AI illustration", @scene.images.find_by(provider: "ai").credit
   end
 end

@@ -28,7 +28,8 @@ Deferred
 - [ ] Decide credit pricing: dollars per credit, credits per AI image, starting credits for new users.
 - [ ] Credit purchase flow (none yet; credits are granted with `bin/rails credits:grant`).
 - [ ] Show credit history to users (the `credit_transactions` table already records it).
-- [ ] **Video clips (not fetched yet).** Scenes use still images only for now. Later:
+- [x] **Video clips v1:** Commons archival video for hook scenes and planner-preferred scenes, Videos tab in the swap panel, preview, downloaded once and cut at render.
+- [ ] **Video clips, later:**
       search Commons for video (`filetype:video` on the search endpoint, then `prop=videoinfo` for the
       URL and license), add Pixabay videos once that source is enabled, decide how a clip fits an
       8–12 s scene (trim, loop, or slow down), show video candidates in the swap panel, and handle
@@ -39,6 +40,32 @@ Deferred
 - [x] **Approve scenes** action that moves the project to `scenes_ready` (requires an image on every scene).
 - [ ] Drag to reorder scenes: left out on purpose, because scenes follow the narration's timing. Revisit if scenes ever become independent of narration.
 - [ ] Pexels as an image source (shown in the mockup, not planned yet).
+
+## Ideas from the Python prototype (`~/Desktop/youtubeautovideo`)
+
+- [ ] Level music by measured loudness (music ~12 dB under the voice) instead of a fixed volume.
+- [ ] Final loudness by measured gain plus a limiter, instead of single-pass loudnorm.
+- [ ] Face-aware crop centre (the prototype uses macOS Vision; production needs another detector).
+- [ ] Word-accurate caption timings with local Whisper (ffmpeg-full includes a whisper filter).
+- [ ] Per-clip crop window for video, to cut a specific logo or burned-in subtitle.
+- [ ] Choose where a video clip starts (today: a quarter of the way in).
+
+## Content quality (seen on the Quaid-e-Azam project)
+
+- [x] Relevance: text check with descriptions, dates and categories, then a picture check per scene;
+      AI suggested where nothing real fits; "AI for every scene" mode.
+- [ ] Search Commons categories (e.g. "Wilbur Wright") and portraits first for real-person scenes,
+      so fewer scenes fall back to AI.
+- [ ] The picture check is strict: on the Wright brothers project it sent 7 of 13 scenes to AI.
+      Watch whether it rejects acceptable symbolic pictures for idea scenes.
+- [x] Audit of a sample project (Panama Canal, 10 scenes): after archive-style queries, a wider pool,
+      place and present-day rules and a second-chance search, 8 of 10 scenes got a checked picture; all
+      8 were relevant on visual review (first run: 5, with one Seattle dredge slipping through earlier).
+- [ ] Trim archive borders: many Library of Congress / NARA scans include the mount, stamps,
+      handwriting or a printed caption. Auto-crop to the photo (ffmpeg cropdetect) before rendering.
+- [ ] Fetching is slow (about 3.5 minutes for 10 scenes): run scene searches and checks in parallel.
+- [ ] Archive footage often has burned-in text; the 5% edge trim and 16:9 fill remove most, not all.
+- [ ] Modern stock footage (Pexels, free API key) for scenes archives can't cover.
 
 ## Voice
 

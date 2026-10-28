@@ -62,4 +62,18 @@ class Ai::ImageGeneratorTest < ActiveSupport::TestCase
 
     assert_raises(Ai::Error) { generator_with(images).call(prompt: "x") }
   end
+
+  test "illustration style asks for a painting, not a photo" do
+    images = FakeImages.new(response: response)
+
+    generator_with(images).call(prompt: "Jinnah addressing a crowd in 1940", style: "illustration")
+
+    assert_includes images.parameters[:prompt], "oil-painting style"
+    assert_includes images.parameters[:prompt], "never a photograph"
+    assert_not_includes images.parameters[:prompt], "Photorealistic"
+  end
+
+  test "an unknown style is refused" do
+    assert_raises(ArgumentError) { generator_with(FakeImages.new(response: response)).call(prompt: "x", style: "3d") }
+  end
 end

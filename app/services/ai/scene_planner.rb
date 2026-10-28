@@ -2,11 +2,15 @@ module Ai
   # Asks the text model for one search plan per scene, in a single call per project.
   # Commons is the only source in v1; Pixabay and vision checks come later (see docs/TODO.md).
   class ScenePlanner
-    Plan = Data.define(:position, :visual_intent, :subject_type, :search_queries, :ai_fallback_allowed)
+    Plan = Data.define(:position, :visual_intent, :subject_type, :search_queries, :ai_fallback_allowed, :prefer) do
+      def initialize(prefer: "image", **rest)
+        super
+      end
+    end
     Result = Data.define(:plans, :total_tokens, :cost_usd)
 
     SUBJECT_TYPES = %w[real_person real_place historical_event object generic_scene abstract].freeze
-    MAX_QUERIES = 3
+    MAX_QUERIES = 4
 
     SYSTEM_PROMPT = <<~PROMPT.freeze
       You are the visual director for a documentary-style video. Input: a topic and a narration
@@ -18,16 +22,25 @@ module Ai
           "beat": <number>,
           "visual_intent": "<one sentence: what the viewer should see>",
           "subject_type": "real_person" | "real_place" | "historical_event" | "object" | "generic_scene" | "abstract",
-          "search_queries": ["<1-3 concrete queries: proper names, places, dates>"],
-          "ai_fallback_allowed": true | false
+          "search_queries": ["<4 queries, from specific to broad; the last is 1-3 words, usually the main name or place>"],
+          "ai_fallback_allowed": true | false,
+          "prefer": "video" | "image"
         }
       ]}
 
       Rules:
       - Queries must be concrete ("Mullaghmore harbour Sligo", "Westminster Abbey 1979"), never vague ("sad scene").
+      - The image search matches every word, so keep queries short and drop abstract words such as
+        "symbolism", "chaos", "concept" or "legacy". Example: ["Lahore Resolution 1940", "Minar-e-Pakistan", "Lahore"].
+      - Search the way an archive labels its photos: use the specific names of places, structures,
+        machines, ships, people and events, not generic descriptions. For digging the Panama Canal write
+        "Culebra Cut steam shovel", not "workers digging canal"; for a disease campaign name the doctor
+        ("William Gorgas") or the work ("mosquito extermination Panama").
       - Real people: search for real photos first, and set ai_fallback_allowed to false for close-ups of a real person.
       - Never plan graphic violence, injuries or bodies. Use symbolic visuals instead (empty room, sea, candles).
       - Do not use the same subject_type for more than 3 beats in a row.
+      - Prefer video for beats 1 and 2 (the hook) and for action: travel, crowds, vehicles, weather,
+        battles, ceremonies. Prefer images for portraits and documents.
       - Return only the JSON object.
     PROMPT
 
@@ -78,7 +91,8 @@ module Ai
           visual_intent: beat["visual_intent"].to_s,
           subject_type: SUBJECT_TYPES.include?(subject) ? subject : "generic_scene",
           search_queries: Array(beat["search_queries"]).map { |q| q.to_s.strip }.reject(&:empty?).first(MAX_QUERIES),
-          ai_fallback_allowed: beat["ai_fallback_allowed"] == true
+          ai_fallback_allowed: beat["ai_fallback_allowed"] == true,
+          prefer: beat["prefer"] == "video" ? "video" : "image"
         )
       end
   end

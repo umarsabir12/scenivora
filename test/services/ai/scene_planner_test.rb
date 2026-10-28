@@ -79,7 +79,7 @@ class Ai::ScenePlannerTest < ActiveSupport::TestCase
     plan = planner.call(topic: "Tesla", scenes: beats).plans[1]
 
     assert_equal "generic_scene", plan.subject_type
-    assert_equal 3, plan.search_queries.size
+    assert_equal Ai::ScenePlanner::MAX_QUERIES, plan.search_queries.size
   end
 
   test "invalid JSON raises a clear error" do

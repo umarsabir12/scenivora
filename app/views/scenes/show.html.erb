@@ -1,4 +1,6 @@
 <% content_for :title, "Scenes · #{@project.title} · Scenivora" %>
+<%# Changes redirect back here; morph the page in place and keep the scroll position instead of jumping. %>
+<% content_for :head, turbo_refreshes_with(method: :morph, scroll: :preserve) %>
 <%= turbo_stream_from @project, :scenes %>
 
 <div class="mx-auto max-w-5xl space-y-6">
@@ -24,14 +26,36 @@
       Finding images... This page refreshes when it's done.
     </p>
   <% elsif @scenes.empty? %>
-    <section class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/5 bg-[#161920] p-6">
-      <p class="max-w-xl text-sm text-zinc-400">
-        Each scene is about 10 seconds of narration. A short plan picks search terms for every scene, then free
-        images are found on Wikimedia Commons.
+    <%= form_with url: project_scenes_path(@project), class: "space-y-4 rounded-2xl border border-white/5 bg-[#161920] p-6" do |form| %>
+      <p class="text-sm text-zinc-400">
+        Each scene is about 10 seconds of narration. Choose where the pictures come from:
       </p>
-      <%= button_to "Create scene · est. #{planner_estimate_label(@project, @track)}", project_scenes_path(@project),
-            method: :post, class: button_classes %>
-    </section>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="flex cursor-pointer gap-3 rounded-xl border border-white/10 p-4 has-[:checked]:border-amber-400/60 has-[:checked]:bg-amber-400/5">
+          <%= radio_button_tag :image_mode, "real_first", @project.image_mode == "real_first", class: "mt-1 accent-amber-400" %>
+          <span>
+            <span class="block font-medium">Real photos first <span class="text-xs text-amber-300">recommended</span></span>
+            <span class="mt-1 block text-xs text-zinc-400">
+              Free Wikimedia photos and footage, each checked by AI against its scene. Where nothing real fits,
+              an AI image is suggested.
+            </span>
+          </span>
+        </label>
+        <label class="flex cursor-pointer gap-3 rounded-xl border border-white/10 p-4 has-[:checked]:border-amber-400/60 has-[:checked]:bg-amber-400/5">
+          <%= radio_button_tag :image_mode, "ai_all", @project.image_mode == "ai_all", class: "mt-1 accent-amber-400" %>
+          <span>
+            <span class="block font-medium">AI images for every scene</span>
+            <span class="mt-1 block text-xs text-zinc-400">
+              Most consistent. <%= pluralize(CreditPricing.ai_image, "credit") %> per image, generated when you click
+              <em>Generate all suggested</em>. Real people are shown as paintings.
+            </span>
+          </span>
+        </label>
+      </div>
+      <div class="flex justify-end">
+        <%= form.submit "Create scene · est. #{planner_estimate_label(@project, @track)}", class: button_classes %>
+      </div>
+    <% end %>
   <% end %>
 
   <% if planning_failed && !searching %>
@@ -56,6 +80,9 @@
           </div>
           <div class="flex flex-wrap gap-2 text-xs font-medium">
             <span class="rounded-full bg-emerald-500/15 px-2.5 py-1 text-emerald-300"><%= pluralize(counts[:free], "free image") %></span>
+            <% if counts[:videos].positive? %>
+              <span class="rounded-full bg-sky-500/15 px-2.5 py-1 text-sky-300"><%= pluralize(counts[:videos], "video") %></span>
+            <% end %>
             <% if counts[:ai].positive? %>
               <span class="rounded-full bg-violet-500/15 px-2.5 py-1 text-violet-300"><%= pluralize(counts[:ai], "AI image") %></span>
             <% end %>
@@ -68,17 +95,35 @@
           </div>
         </div>
 
+        <% suggested = @scenes.select { |scene| scene.ai_suggested? && !scene.ai_generating? } %>
+        <% if suggested.any? %>
+          <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4">
+            <p class="text-sm text-violet-200">
+              <%= pluralize(suggested.size, "scene") %> had no real picture that fits. An AI image is suggested for
+              <%= suggested.size == 1 ? "it" : "each" %>.
+            </p>
+            <%= button_to "Generate all suggested · #{pluralize(suggested.size * CreditPricing.ai_image, "credit")}",
+                  generate_suggested_project_scenes_path(@project), method: :post, class: button_classes,
+                  form: { data: { turbo_confirm: "Generate #{pluralize(suggested.size, "AI image")} for #{suggested.size * CreditPricing.ai_image} credits?" } } %>
+          </div>
+        <% end %>
+
         <ol class="space-y-3">
           <% @scenes.each do |scene| %>
             <% image = scene.selected_image %>
             <% current = scene == @current_scene %>
             <li id="scene_<%= scene.id %>"
-                class="flex flex-col gap-4 rounded-2xl border p-4 sm:flex-row <%= current ? "border-amber-400/60 bg-amber-400/[0.03]" : "border-white/5 bg-[#161920]" %>"
-                aria-current="<%= current ? "true" : "false" %>">
+                class="flex cursor-pointer flex-col gap-4 rounded-2xl border border-white/5 bg-[#161920] p-4 transition hover:border-white/15 sm:flex-row aria-[current=true]:border-amber-400/60 aria-[current=true]:bg-amber-400/[0.03]"
+                aria-current="<%= current ? "true" : "false" %>"
+                data-controller="card-link" data-action="click->card-link#open"
+                data-card-link-url-value="<%= project_scenes_path(@project, scene: scene.id) %>">
               <div class="relative aspect-video w-full shrink-0 overflow-hidden rounded-xl bg-white/5 sm:w-48">
                 <% if image %>
-                  <%= image_tag scene_image_src(image), alt: "Image for scene #{scene.position}", loading: "lazy",
+                  <%= image_tag scene_image_src(image), alt: "#{image.video? ? "Video" : "Image"} for scene #{scene.position}", loading: "lazy",
                         class: "h-full w-full object-cover #{"opacity-30" if scene.ai_generating?}" %>
+                  <% if image.video? %>
+                    <span class="absolute bottom-2 left-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[11px] font-semibold text-white">▶ Video</span>
+                  <% end %>
                 <% elsif !scene.ai_generating? %>
                   <div class="flex h-full items-center justify-center p-3 text-center text-xs text-zinc-500">No image yet</div>
                 <% end %>
@@ -100,9 +145,13 @@
                     <%= image_source_badge(image) %>
                     <span class="text-zinc-500"><%= image.license %></span>
                   <% end %>
+                  <%= media_check_badge(scene) %>
                 </div>
 
                 <p class="text-sm text-zinc-200"><%= scene.text %></p>
+                <% if image && scene.media_note.present? && scene.media_check != "ai_suggested" %>
+                  <p class="text-xs text-zinc-500"><%= scene.media_note %></p>
+                <% end %>
 
                 <% if image %>
                   <p class="truncate text-xs text-zinc-500">
@@ -113,14 +162,20 @@
                       <%= image.credit %>
                     <% end %>
                   </p>
+                <% elsif scene.ai_suggested? %>
+                  <p class="text-xs text-violet-200"><%= scene.media_note %></p>
+                  <%= link_to "Generate AI image", project_scenes_path(@project, scene: scene.id, source: "ai"),
+                        class: "inline-block text-xs font-medium text-violet-300 hover:underline",
+                        data: { action: "card-link#select:prevent", card_link_url_param: project_scenes_path(@project, scene: scene.id, source: "ai") } %>
                 <% elsif scene.search_error.present? %>
                   <p class="text-xs text-red-300" role="alert"><%= scene.search_error %></p>
                 <% else %>
-                  <p class="text-xs text-zinc-500">No free image found. Search again, or upload your own. AI images are not built yet.</p>
+                  <p class="text-xs text-zinc-500">No free image found. Search again, generate one with AI, or upload your own.</p>
                 <% end %>
 
                 <div class="flex flex-wrap gap-2 pt-1">
-                  <%= link_to "Swap image", project_scenes_path(@project, scene: scene.id, anchor: "swap"), class: small_button_classes %>
+                  <%= link_to "Swap image", project_scenes_path(@project, scene: scene.id), class: small_button_classes,
+                        data: { action: "card-link#select:prevent" } %>
 
                   <%= form_with url: scene_images_path(scene), multipart: true, data: { controller: "auto-submit" } do |form| %>
                     <label class="<%= small_button_classes %>">
@@ -141,7 +196,9 @@
         </ol>
       </section>
 
-      <aside id="swap" class="self-start rounded-2xl border border-white/5 bg-[#161920] p-5 lg:sticky lg:top-24" aria-labelledby="swap-heading">
+      <%# Card clicks and tabs load only this frame. Forms inside it update the whole page (target _top). %>
+      <turbo-frame id="swap_panel" target="_top" data-turbo-action="advance" class="self-start lg:sticky lg:top-24">
+      <aside id="swap" class="rounded-2xl border border-white/5 bg-[#161920] p-5" aria-labelledby="swap-heading">
         <h2 id="swap-heading" class="text-lg font-semibold">Swap image · Scene <%= @current_scene.position %></h2>
         <p class="mt-1 text-sm text-zinc-400">Free sources first. AI only when nothing fits.</p>
 
@@ -149,22 +206,40 @@
         <% active_tab = "#{tab} bg-white font-medium text-zinc-950" %>
         <% idle_tab = "#{tab} border border-white/10 text-zinc-300 hover:bg-white/5" %>
         <nav class="mt-4 flex flex-wrap gap-2 text-sm" aria-label="Image sources">
-          <%= link_to "Commons", project_scenes_path(@project, scene: @current_scene.id, anchor: "swap"),
+          <%= link_to "Commons", project_scenes_path(@project, scene: @current_scene.id), data: { turbo_frame: "swap_panel" },
                 class: (@source == "commons" ? active_tab : idle_tab), aria: { current: (@source == "commons" ? "page" : nil) } %>
+          <%= link_to "Videos", project_scenes_path(@project, scene: @current_scene.id, source: "video"), data: { turbo_frame: "swap_panel" },
+                class: (@source == "video" ? active_tab : idle_tab), aria: { current: (@source == "video" ? "page" : nil) } %>
           <span aria-disabled="true" title="Skipped for now" class="<%= tab %> cursor-not-allowed border border-white/10 text-zinc-600">Pixabay</span>
-          <%= link_to "AI generate", project_scenes_path(@project, scene: @current_scene.id, source: "ai", anchor: "swap"),
+          <%= link_to "AI generate", project_scenes_path(@project, scene: @current_scene.id, source: "ai"), data: { turbo_frame: "swap_panel" },
                 class: (@source == "ai" ? active_tab : idle_tab), aria: { current: (@source == "ai" ? "page" : nil) } %>
         </nav>
 
         <% if @source == "ai" %>
           <%= render "scenes/ai_generate", scene: @current_scene %>
         <% else %>
+          <% video_search = @source == "video" %>
           <%= form_with url: scene_search_path(@current_scene), class: "mt-4 flex gap-2" do |form| %>
-            <%= form.label :query, "Search Wikimedia Commons", class: "sr-only" %>
-            <%= form.search_field :query, value: @current_scene.search_query, placeholder: "Search Wikimedia Commons",
+            <%= hidden_field_tag :kind, "video" if video_search %>
+            <%= form.label :query, (video_search ? "Search Commons video" : "Search Wikimedia Commons"), class: "sr-only" %>
+            <%= form.search_field :query, value: @current_scene.search_query,
+                  placeholder: (video_search ? "Search Commons video" : "Search Wikimedia Commons"),
                   class: field_classes.sub("mt-1 ", "") %>
             <%= form.submit "Search", class: small_button_classes %>
           <% end %>
+          <% if video_search %>
+            <p class="mt-2 text-xs text-zinc-500">Mostly archival footage. Opening on video helps viewers stay.</p>
+          <% end %>
+        <% end %>
+
+        <% selected = @current_scene.selected_image %>
+        <% if selected&.video? %>
+          <video controls muted playsinline preload="metadata" class="mt-4 aspect-video w-full rounded-xl bg-black"
+                 poster="<%= selected.poster_url %>" src="<%= scene_video_preview_src(selected, @current_scene) %>"></video>
+          <p class="mt-1 text-xs text-zinc-500">
+            Plays the <%= format("%.0f", @current_scene.duration_ms / 1000.0) %> seconds used in the video,
+            from <%= format_timecode(selected.clip_start_ms.to_i) %>.
+          </p>
         <% end %>
 
         <% candidates = @current_scene.images %>
@@ -175,8 +250,15 @@
                     title: "#{candidate.credit} · #{candidate.license}",
                     aria: { pressed: candidate.selected? },
                     class: "block w-full cursor-pointer overflow-hidden rounded-xl ring-2 #{candidate.selected? ? "ring-amber-400" : "ring-transparent hover:ring-white/20"}" do %>
-                <%= image_tag scene_image_src(candidate), alt: "Candidate by #{candidate.credit}", loading: "lazy",
-                      class: "aspect-video w-full object-cover" %>
+                <span class="relative block">
+                  <%= image_tag scene_image_src(candidate), alt: "#{candidate.video? ? "Video" : "Image"} candidate by #{candidate.credit}",
+                        loading: "lazy", class: "aspect-video w-full object-cover" %>
+                  <% if candidate.video? %>
+                    <span class="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+                      ▶ <%= format_timecode(candidate.duration_ms.to_i) %>
+                    </span>
+                  <% end %>
+                </span>
               <% end %>
             <% end %>
           </div>
@@ -202,6 +284,7 @@
           <% end %>
         </div>
       </aside>
+      </turbo-frame>
     </div>
   <% end %>
 </div>

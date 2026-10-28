@@ -3,14 +3,34 @@ class SceneImage < ApplicationRecord
   AI_PROVIDER = "ai".freeze
   UPLOAD_TYPES = %w[image/jpeg image/png image/webp].freeze
   MAX_UPLOAD_BYTES = 10.megabytes
+  MEDIA_TYPES = %w[image video].freeze
 
   belongs_to :scene
   has_one_attached :file
 
   validates :provider, presence: true
+  validates :media_type, inclusion: { in: MEDIA_TYPES }
   validates :image_url, presence: true, unless: :stored_file?
   validate :file_attached, if: :stored_file?
   validate :acceptable_upload, if: :upload?
+
+  # A readable title for a sourced candidate, from its Wikimedia page or file name.
+  def source_title
+    name = page_url.to_s[/File:(.+)\z/, 1] || image_url.to_s.split("?").first.to_s.split("/").last.to_s
+    URI.decode_www_form_component(name.to_s).sub(/\.[a-z0-9]+\z/i, "").tr("_", " ")
+  rescue ArgumentError
+    name.to_s
+  end
+
+  def video?
+    media_type == "video"
+  end
+
+  # Where a scene's clip starts in a source video: a quarter of the way in (archive films often
+  # open with title cards), but early enough that the whole scene fits when the video is long enough.
+  def self.default_clip_start(video_ms, scene_ms)
+    [ [ video_ms / 4, video_ms - scene_ms ].min, 0 ].max
+  end
 
   def upload?
     provider == UPLOAD_PROVIDER

@@ -1,12 +1,15 @@
 require "tmpdir"
 
-# Renders the final MP4 with ffmpeg: one zooming clip per scene, burned-in captions, the narration,
+# Renders the final MP4 with ffmpeg: one clip per scene (a zooming still, or a cut from a video), burned-in captions, the narration,
 # and background music ducked underneath. Also makes a thumbnail. Runs locally, so it costs no API money.
 class RenderVideoJob < ApplicationJob
   queue_as :default
 
   FPS = 30
   MAX_IMAGE_BYTES = 30.megabytes
+  # Source videos are downloaded once per render and cut locally: streaming a seek into a remote
+  # WebM took 6 to 18 minutes for a 6 s clip on a slow link, while download plus cut took ~10 s.
+  MAX_VIDEO_BYTES = 150.megabytes
 
   class RenderError < StandardError; end
 
@@ -24,11 +27,19 @@ class RenderVideoJob < ApplicationJob
     ffmpeg = Media::Ffmpeg.new
 
     Dir.mktmpdir("render-#{project.id}") do |dir|
+      video_sources = {}
       clips = scenes.each_with_index.map do |scene, index|
         progress(project, "Preparing scene #{index + 1} of #{scenes.size}...")
-        image_path = fetch_image(scene.selected_image, File.join(dir, format("image-%03d", index + 1)))
-        ffmpeg.still_clip(image_path, frames_for(scene), File.join(dir, format("clip-%03d.mp4", index + 1)),
-                          fps: FPS, zoom_in: index.even?)
+        media = scene.selected_image
+        clip_path = File.join(dir, format("clip-%03d.mp4", index + 1))
+        if media.video?
+          source = video_sources[media.image_url] ||=
+            Media::Download.to_file(media.image_url, File.join(dir, format("video-%03d", video_sources.size + 1)), max_bytes: MAX_VIDEO_BYTES)
+          ffmpeg.video_clip(source, media.clip_start_ms.to_i, frames_for(scene), clip_path, fps: FPS)
+        else
+          image_path = fetch_image(media, File.join(dir, format("image-%03d", index + 1)))
+          ffmpeg.still_clip(image_path, frames_for(scene), clip_path, fps: FPS, zoom_in: index.even?)
+        end
       end
 
       progress(project, "Joining scenes...")

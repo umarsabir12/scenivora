@@ -3,7 +3,8 @@ require "json"
 
 module Media
   # Fetches a JSON document over HTTPS. Shared by the image search services.
-  # Backs off on HTTP 429 (rate limit) using the Retry-After header, up to MAX_ATTEMPTS.
+  # Retries rate limits (429) and server errors (5xx) with backoff, up to MAX_ATTEMPTS. Uses the
+  # Retry-After header when the server sends one.
   module HttpJson
     USER_AGENT = "Scenivora/0.1 (https://github.com/umarsabir12/scenivora; umarsabir1997@gmail.com)".freeze
     MAX_ATTEMPTS = 3
@@ -15,8 +16,8 @@ module Media
 
       response = fetch(uri)
       attempts = 1
-      while response.code == "429" && attempts < MAX_ATTEMPTS
-        sleep(retry_wait(response))
+      while retryable?(response) && attempts < MAX_ATTEMPTS
+        sleep(retry_wait(response, attempts))
         response = fetch(uri)
         attempts += 1
       end
@@ -33,8 +34,13 @@ module Media
       end
     end
 
-    def self.retry_wait(response)
-      seconds = Integer(response["Retry-After"].to_s, exception: false) || 5
+    def self.retryable?(response)
+      response.code == "429" || response.code.start_with?("5")
+    end
+
+    # Retry-After if given, otherwise 2, then 4 seconds.
+    def self.retry_wait(response, attempts = 1)
+      seconds = Integer(response["Retry-After"].to_s, exception: false) || 2**attempts
       [ seconds, MAX_WAIT_SECONDS ].min
     end
   end

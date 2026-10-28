@@ -31,7 +31,8 @@ class VideoDescription
       return if sourced.empty?
 
       lines = sourced.map { |image| "- #{[ image.credit, image.license, image.page_url ].compact_blank.join(", ")}" }
-      "Image credits:\n#{lines.join("\n")}"
+      heading = sourced.any?(&:video?) ? "Image and video credits" : "Image credits"
+      "#{heading}:\n#{lines.join("\n")}"
     end
 
     def music_credit

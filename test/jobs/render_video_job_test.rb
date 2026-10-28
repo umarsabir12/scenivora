@@ -23,6 +23,14 @@ class RenderVideoJobTest < ActiveJob::TestCase
       output_path
     end
 
+    def video_clip(source, start_ms, frames, output_path, fps:)
+      raise @error if @error
+
+      @clips << { video: source, start_ms: start_ms, frames: frames, fps: fps }
+      File.binwrite(output_path, "clip")
+      output_path
+    end
+
     def concat(paths, output_path)
       File.binwrite(output_path, paths.map { |path| File.binread(path) }.join)
       output_path
@@ -144,5 +152,37 @@ class RenderVideoJobTest < ActiveJob::TestCase
 
     assert_nil ffmpeg.finish_args[:captions_path]
     assert_nil @project.reload.settings["render_warning"]
+  end
+
+  test "a video scene is downloaded once and cut at the chosen start" do
+    scene = @project.scenes.first
+    scene.images.update_all(selected: false)
+    scene.images.create!(provider: "wikimedia_commons", media_type: "video", image_url: "https://upload.wikimedia.org/refugees.webm",
+                         poster_url: "https://upload.wikimedia.org/refugees.jpg", credit: "Archive", license: "Public domain",
+                         duration_ms: 60_000, clip_start_ms: 15_000, selected: true)
+    ffmpeg = FakeFfmpeg.new
+
+    render_with(ffmpeg)
+
+    first = ffmpeg.clips.first
+    assert_not first[:video].start_with?("https://"), "the clip is cut from a local copy"
+    assert_equal 15_000, first[:start_ms]
+    assert_equal 300, first[:frames]
+    assert_equal 1, @downloads.count("https://upload.wikimedia.org/refugees.webm")
+    assert @project.reload.rendered?
+  end
+
+  test "a video used by two scenes is downloaded only once" do
+    @project.scenes.each do |scene|
+      scene.images.update_all(selected: false)
+      scene.images.create!(provider: "wikimedia_commons", media_type: "video", image_url: "https://upload.wikimedia.org/same.webm",
+                           poster_url: "https://upload.wikimedia.org/same.jpg", credit: "Archive", license: "Public domain",
+                           duration_ms: 60_000, clip_start_ms: 0, selected: true)
+    end
+
+    render_with(FakeFfmpeg.new)
+
+    assert_equal 1, @downloads.count("https://upload.wikimedia.org/same.webm")
+    assert @project.reload.rendered?
   end
 end

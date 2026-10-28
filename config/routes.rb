@@ -13,6 +13,7 @@ Rails.application.routes.draw do
     end
     resource :scenes, only: %i[show create] do
       post :approve
+      post :generate_suggested
     end
     resource :music, only: %i[show create update destroy], controller: "music" do
       post :upload

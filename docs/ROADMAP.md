@@ -16,7 +16,7 @@ Smaller open items live in [TODO.md](TODO.md); costs in [COSTS.md](COSTS.md).
 | 1.7 | Shorter scenes option (4–6 s) for faster pacing | Retention drops when a visual stays on screen too long | Not started |
 | 1.8 | Hook title over the first seconds | Gives the first frame a reason to keep watching | Not started (needs hook text from the planner) |
 | 1.9 | Vertical 9:16 format (Shorts) | Shorts reach a separate audience | Not started |
-| 1.10 | Video clips for action scenes | Motion footage beats stills for travel, crowds, weather | Not started |
+| 1.10 | Video clips for action scenes | Motion footage beats stills for travel, crowds, weather | v1 done (Commons archival video for hook and action scenes) |
 | 1.11 | Transitions and sound effects (short whoosh, fade) | Pattern interrupts keep attention | Not started |
 
 ## Phase 2: Content quality

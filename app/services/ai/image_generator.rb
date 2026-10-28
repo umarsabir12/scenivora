@@ -18,19 +18,26 @@ module Ai
       "gpt-image-1-mini" => { text_input: 2.00, image_input: 2.50, image_output: 8.00 }
     }.freeze
 
-    # Added to every prompt: the same rules the scene planner follows.
-    SAFETY_RULES = "Photorealistic documentary still. Do not show a recognizable face of any real person: " \
-                   "show people from behind, in silhouette, or only hands and objects. No text, captions, " \
-                   "signs, logos, watermarks, flags or religious symbols. No graphic violence or injuries.".freeze
+    # Added to every prompt. Photos never show a real person's face; real people are only ever shown
+    # as clearly painted illustrations, so no image can pass as a real photograph of them.
+    STYLE_RULES = {
+      "photo" => "Photorealistic documentary still. Do not show a recognizable face of any real person: " \
+                 "show people from behind, in silhouette, or only hands and objects. No text, captions, " \
+                 "signs, logos, watermarks, flags or religious symbols. No graphic violence or injuries.",
+      "illustration" => "A hand-painted historical illustration in an oil-painting style, with visible brush " \
+                        "strokes: clearly a painting, never a photograph. No text, captions, signs, logos or " \
+                        "watermarks. No graphic violence or injuries."
+    }.freeze
 
     def initialize(model: ENV.fetch("OPENAI_IMAGE_MODEL", DEFAULT_MODEL), client: nil)
       @model = model
       @client = client
     end
 
-    def call(prompt:)
+    def call(prompt:, style: "photo")
+      rules = STYLE_RULES.fetch(style) { raise ArgumentError, "Unknown image style: #{style}" }
       response = client.images.generate(parameters: {
-        model: model, prompt: "#{prompt.strip}\n\n#{SAFETY_RULES}", size: SIZE, quality: QUALITY, n: 1
+        model: model, prompt: "#{prompt.strip}\n\n#{rules}", size: SIZE, quality: QUALITY, n: 1
       })
 
       encoded = response.dig("data", 0, "b64_json")

@@ -30,7 +30,10 @@ class ScenesControllerTest < ActionDispatch::IntegrationTest
 
     get project_scenes_url(@project)
 
-    assert_select "form[action=?] button", project_scenes_path(@project), text: /\ACreate scene · est\. \$\d+\.\d{4}\z/
+    assert_select "form[action=?] input[type=submit]", project_scenes_path(@project)
+    assert_select "input[type=submit][value*=?]", "Create scene · est. $"
+    assert_select "input[type=radio][name=image_mode][value=real_first][checked]"
+    assert_select "input[type=radio][name=image_mode][value=ai_all]"
   end
 
   test "create enqueues the image job and marks the project as searching" do
@@ -177,7 +180,7 @@ class ScenesControllerTest < ActionDispatch::IntegrationTest
 
     post approve_project_scenes_url(@project)
 
-    assert_redirected_to project_scenes_url(@project, scene: scene.id, anchor: "swap")
+    assert_redirected_to project_scenes_url(@project, scene: scene.id)
     assert_not @project.reload.scenes_ready?
   end
 
@@ -236,5 +239,98 @@ class ScenesControllerTest < ActionDispatch::IntegrationTest
     scene.update!(ai_status: nil)
     get project_scenes_url(@project)
     assert_select "li#scene_#{scene.id} [role=status]", count: 0
+  end
+
+  test "a selected video shows its poster with a video badge and a preview of the seconds used" do
+    confirmed_track
+    scene = @project.scenes.create!(position: 1, text: "Refugees crowd the trains.", start_ms: 0, duration_ms: 8_000)
+    scene.images.create!(provider: "wikimedia_commons", media_type: "video", image_url: "https://upload.wikimedia.org/refugees.webm",
+                         poster_url: "https://upload.wikimedia.org/refugees.jpg", credit: "Archive", license: "Public domain",
+                         duration_ms: 60_000, clip_start_ms: 15_000, selected: true)
+
+    get project_scenes_url(@project, scene: scene.id, source: "video")
+
+    assert_select "li#scene_#{scene.id} img[src=?]", "https://upload.wikimedia.org/refugees.jpg"
+    assert_select "li#scene_#{scene.id} span", text: "▶ Video"
+    assert_select "span", text: "Commons video"
+    assert_select "#swap video[src=?]", "https://upload.wikimedia.org/refugees.webm#t=15.0,23.0"
+    assert_select "#swap a[aria-current=page]", text: "Videos"
+    assert_select "#swap input[name=kind][value=video]"
+  end
+
+  test "generate all suggested charges for every suggested scene and starts them" do
+    confirmed_track
+    first = @project.scenes.create!(position: 1, text: "Tides follow the moon.", start_ms: 0, duration_ms: 5_000, media_check: "ai_suggested")
+    second = @project.scenes.create!(position: 2, text: "The sea rises.", start_ms: 5_000, duration_ms: 5_000, media_check: "ai_suggested")
+    @project.scenes.create!(position: 3, text: "It falls again.", start_ms: 10_000, duration_ms: 5_000, media_check: "verified")
+    @user.grant_credits!(CreditPricing.ai_image * 2, reason: "manual_grant")
+
+    assert_enqueued_jobs 2, only: GenerateSceneImageJob do
+      post generate_suggested_project_scenes_url(@project)
+    end
+
+    assert_equal 0, @user.reload.credits_balance
+    assert first.reload.ai_generating?
+    assert second.reload.ai_generating?
+  end
+
+  test "generate all suggested is refused, charging nothing, without enough credits for all" do
+    confirmed_track
+    @project.scenes.create!(position: 1, text: "Tides follow the moon.", start_ms: 0, duration_ms: 5_000, media_check: "ai_suggested")
+    @project.scenes.create!(position: 2, text: "The sea rises.", start_ms: 5_000, duration_ms: 5_000, media_check: "ai_suggested")
+    @user.grant_credits!(CreditPricing.ai_image, reason: "manual_grant")
+
+    assert_no_enqueued_jobs { post generate_suggested_project_scenes_url(@project) }
+
+    assert_equal CreditPricing.ai_image, @user.reload.credits_balance
+    assert_match "need #{CreditPricing.ai_image * 2} credits", flash[:alert]
+  end
+
+  test "the chosen image mode is saved when scenes are created" do
+    confirmed_track
+
+    post project_scenes_url(@project), params: { image_mode: "ai_all" }
+
+    assert_equal "ai_all", @project.reload.image_mode
+  end
+
+  test "scene cards show whether their picture was checked, and suggested scenes offer AI" do
+    confirmed_track
+    checked = @project.scenes.create!(position: 1, text: "Tides follow the moon.", start_ms: 0, duration_ms: 5_000,
+                                      media_check: "verified", media_note: "Shows the tide.")
+    checked.images.create!(provider: "wikimedia_commons", image_url: "https://upload.wikimedia.org/a.jpg", credit: "x", license: "CC0", selected: true)
+    @project.scenes.create!(position: 2, text: "The sea rises.", start_ms: 5_000, duration_ms: 5_000,
+                            media_check: "ai_suggested", media_note: "No real picture fits.")
+    @user.grant_credits!(20, reason: "manual_grant")
+
+    get project_scenes_url(@project)
+
+    assert_select "span", text: "✓ Checked"
+    assert_select "span", text: "AI image suggested"
+    assert_select "p", text: "No real picture fits."
+    assert_select "form[action=?] button", generate_suggested_project_scenes_path(@project),
+                  text: "Generate all suggested · #{CreditPricing.ai_image} credits"
+  end
+
+  test "clicking a scene card opens that scene's swap panel" do
+    confirmed_track
+    scene = @project.scenes.create!(position: 1, text: "Tides follow the moon.", start_ms: 0, duration_ms: 60_000)
+
+    get project_scenes_url(@project)
+
+    assert_select "li#scene_#{scene.id}[data-controller=card-link][data-action=?][data-card-link-url-value=?]",
+                  "click->card-link#open", project_scenes_path(@project, scene: scene.id)
+  end
+
+  test "the swap panel loads as a frame, and changes refresh the page in place" do
+    confirmed_track
+    @project.scenes.create!(position: 1, text: "Tides follow the moon.", start_ms: 0, duration_ms: 60_000)
+
+    get project_scenes_url(@project)
+
+    assert_select "turbo-frame#swap_panel[target=_top][data-turbo-action=advance] aside#swap"
+    assert_select "meta[name=turbo-refresh-method][content=morph]"
+    assert_select "meta[name=turbo-refresh-scroll][content=preserve]"
+    assert_select "#swap a[data-turbo-frame=swap_panel]", text: "Videos"
   end
 end

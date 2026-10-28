@@ -52,7 +52,8 @@ module Media
           image_url: info["thumburl"] || info["url"],
           page_url: info["descriptionurl"],
           credit: plain_text(meta.dig("Artist", "value")).presence || "Wikimedia Commons contributor",
-          license: license
+          license: license,
+          **CommonsMetadata.details(meta)
         )
       end
 

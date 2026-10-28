@@ -17,6 +17,15 @@ module Media
     VIDEO_HEIGHT = 1080
     FADE_OUT_SECONDS = 3
     ZOOM = 0.07 # how far each scene zooms, as a fraction of the frame
+    # The still is prepared this much larger than the frame, so the zoom always has room.
+    BASE_MARGIN = 1 + ZOOM + 0.02
+    # Landscape crops are taken from this far down the image, where faces usually are.
+    CROP_FROM_TOP = 0.35
+    # Video is trimmed by this fraction on every edge, which cuts most corner logos and timecodes.
+    VIDEO_EDGE_TRIM = 0.05
+    # Streaming from Wikimedia occasionally drops ("Connection reset by peer"); try again this often.
+    REMOTE_ATTEMPTS = 3
+    REMOTE_TIMEOUT_SECONDS = 30
     # Images whose width/height ratio falls in this range fill the frame (cropping a little).
     # Anything narrower or wider is shown whole over a blurred copy of itself.
     FILL_RATIO_RANGE = (1.45..2.2)
@@ -43,27 +52,65 @@ module Media
       output_path
     end
 
-    # Turns one still image into a 1080p clip of exactly `frames` frames, with a slow zoom in
-    # (or out). The image is fitted first: see FILL_RATIO_RANGE.
+    # Turns one still image into a 1080p clip of exactly `frames` frames, with a slow zoom in (or out).
+    #
+    # The zoom samples the image at fractional pixel positions every frame (ffmpeg's perspective
+    # filter with cubic interpolation), so it glides instead of stepping. Measured on the same photo:
+    # 0.043 unevenness against 0.121 for zoompan at 4x and 0.478 for zoompan at 2x.
     def still_clip(image_path, frames, output_path, fps:, zoom_in: true)
-      big_w = VIDEO_WIDTH * 2 # zoompan jitters at output size, so work at double size
-      big_h = VIDEO_HEIGHT * 2
-      zoom = zoom_in ? "1+#{ZOOM}*on/#{frames}" : "1+#{ZOOM}-#{ZOOM}*on/#{frames}"
-      motion = "zoompan=z='#{zoom}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=#{frames}:" \
-               "s=#{VIDEO_WIDTH}x#{VIDEO_HEIGHT}:fps=#{fps},format=yuv420p"
+      base_path = File.join(File.dirname(output_path), "#{File.basename(output_path, ".*")}-base.png")
+      prepare_still(image_path, base_path)
 
-      filter =
+      inset = zoom_in ? "(1-1/(1+#{ZOOM}*on/#{frames}))/2" : "(1-1/(1+#{ZOOM}-#{ZOOM}*on/#{frames}))/2"
+      corners = { x0: "W*#{inset}", y0: "H*#{inset}", x1: "W-W*#{inset}", y1: "H*#{inset}",
+                  x2: "W*#{inset}", y2: "H-H*#{inset}", x3: "W-W*#{inset}", y3: "H-H*#{inset}" }
+      motion = "perspective=#{corners.map { |key, value| "#{key}='#{value}'" }.join(":")}:interpolation=cubic:eval=frame," \
+               "scale=#{VIDEO_WIDTH}:#{VIDEO_HEIGHT}:flags=lanczos,format=yuv420p"
+
+      ffmpeg!("-loop", "1", "-framerate", fps.to_s, "-i", base_path, "-vf", motion, "-frames:v", frames.to_s,
+              "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-an", output_path)
+      output_path
+    end
+
+    # The still a clip zooms over, made once: fitted to a frame slightly larger than the video,
+    # lightly sharpened. Images close to 16:9 fill it; others are shown whole over a blurred copy.
+    def prepare_still(image_path, base_path)
+      width = even(VIDEO_WIDTH * BASE_MARGIN)
+      height = even(VIDEO_HEIGHT * BASE_MARGIN)
+      fitted =
         if fill?(image_path)
-          "[0:v]scale=#{big_w}:#{big_h}:force_original_aspect_ratio=increase,crop=#{big_w}:#{big_h},setsar=1,#{motion}[v]"
+          "[0:v]scale=#{width}:#{height}:force_original_aspect_ratio=increase:flags=lanczos," \
+          "crop=#{width}:#{height}:(iw-ow)/2:(ih-oh)*#{CROP_FROM_TOP}"
         else
           "[0:v]split=2[a][b];" \
-          "[a]scale=#{big_w}:#{big_h}:force_original_aspect_ratio=increase,crop=#{big_w}:#{big_h},gblur=sigma=40,eq=brightness=-0.15[bg];" \
-          "[b]scale=#{big_w}:#{big_h}:force_original_aspect_ratio=decrease[fg];" \
-          "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1,#{motion}[v]"
+          "[a]scale=#{width}:#{height}:force_original_aspect_ratio=increase,crop=#{width}:#{height}," \
+          "gblur=sigma=20,eq=brightness=-0.15[bg];" \
+          "[b]scale=#{width}:#{height}:force_original_aspect_ratio=decrease:flags=lanczos[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2"
         end
 
-      ffmpeg!("-i", image_path, "-filter_complex", filter, "-map", "[v]", "-frames:v", frames.to_s,
-              "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-an", output_path)
+      ffmpeg!("-i", image_path, "-filter_complex", "#{fitted},setsar=1,unsharp=5:5:0.5,eq=contrast=1.05[v]",
+              "-map", "[v]", "-frames:v", "1", base_path)
+      base_path
+    end
+
+    # Cuts `frames` frames from a video (a local path; an HTTPS URL works but streams slowly, so the
+    # render job downloads sources first), starting at start_ms. Video always fills the frame and loses VIDEO_EDGE_TRIM on
+    # every edge: on 4:3 archive footage this removes the top and bottom bands where timecodes and
+    # channel banners sit, and most corner logos. If the source runs out first, its last frame is held.
+    # The clip is silent: the narration is added in the final pass.
+    def video_clip(source, start_ms, frames, output_path, fps:)
+      keep = 1 - 2 * VIDEO_EDGE_TRIM
+      seconds = format("%.3f", frames.to_f / fps)
+      filter = "fps=#{fps},crop=iw*#{keep}:ih*#{keep}," \
+               "scale=#{VIDEO_WIDTH}:#{VIDEO_HEIGHT}:force_original_aspect_ratio=increase:flags=lanczos," \
+               "crop=#{VIDEO_WIDTH}:#{VIDEO_HEIGHT},setsar=1,eq=contrast=1.05:saturation=0.92," \
+               "tpad=stop_mode=clone:stop_duration=#{seconds},format=yuv420p"
+
+      with_remote_retries(source) do
+        ffmpeg!(*remote_options(source), "-ss", format("%.3f", start_ms / 1000.0), "-i", source,
+                "-vf", filter, "-frames:v", frames.to_s, "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-an",
+                output_path)
+      end
       output_path
     end
 
@@ -102,6 +149,12 @@ module Media
       output_path
     end
 
+    # A small JPEG of an image (or a video's first frame), for showing to the picture check.
+    def jpeg_preview(input_path, output_path, width: 512)
+      ffmpeg!("-i", input_path, "-frames:v", "1", "-vf", "scale=#{width}:-2", "-q:v", "4", output_path)
+      output_path
+    end
+
     def thumbnail(video_path, output_path)
       ffmpeg!("-ss", "1", "-i", video_path, "-frames:v", "1", "-vf", "scale=1280:720", output_path)
       output_path
@@ -113,10 +166,10 @@ module Media
       (Float(seconds.strip) * 1000).round
     end
 
-    # [width, height] of an image or video.
+    # [width, height] of an image or video (a local path or an HTTPS URL).
     def dimensions(path)
-      output = run!(self.class.ffprobe_bin, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
-                    "-of", "csv=p=0:s=x", path)
+      output = run!(self.class.ffprobe_bin, *remote_options(path), "-v", "error", "-select_streams", "v:0",
+                    "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", path)
       output.strip.split("x").map { |value| Integer(value) }
     end
 
@@ -127,8 +180,36 @@ module Media
 
     private
       def fill?(image_path)
-        width, height = dimensions(image_path)
+        fill_ratio?(*dimensions(image_path))
+      end
+
+      def fill_ratio?(width, height)
         FILL_RATIO_RANGE.cover?(width.to_f / height)
+      end
+
+      def even(value)
+        (value / 2.0).round * 2
+      end
+
+      def with_remote_retries(source)
+        attempts = 0
+        begin
+          attempts += 1
+          yield
+        rescue Error
+          raise unless source.to_s.start_with?("https://") && attempts < REMOTE_ATTEMPTS
+
+          sleep(2 * attempts)
+          retry
+        end
+      end
+
+      # Wikimedia asks every client, ffmpeg included, to send a descriptive User-Agent.
+      def remote_options(source)
+        return [] unless source.to_s.start_with?("https://")
+
+        # rw_timeout (microseconds): give up on a stalled stream instead of waiting forever.
+        [ "-user_agent", HttpJson::USER_AGENT, "-rw_timeout", (REMOTE_TIMEOUT_SECONDS * 1_000_000).to_s ]
       end
 
       def ffmpeg!(*args, chdir: nil)

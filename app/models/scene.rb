@@ -17,13 +17,39 @@ class Scene < ApplicationRecord
     start_ms + duration_ms
   end
 
-  # The planner marks scenes where an AI image would be inappropriate, such as close-ups of a real person.
-  def ai_allowed?
-    plan.fetch("ai_fallback_allowed", true) != false
+  # The planner marks scenes that show a real person. Their AI images are painted illustrations,
+  # never photorealistic, so they can't be mistaken for real photographs of that person.
+  def ai_style
+    plan.fetch("ai_fallback_allowed", true) == false ? "illustration" : "photo"
   end
 
   def ai_generating?
     ai_status == "generating"
+  end
+
+  def ai_suggested?
+    media_check == "ai_suggested"
+  end
+
+  # The prompt an AI image starts from: the planner's description of what the viewer should see.
+  def suggested_ai_prompt
+    plan["visual_intent"].presence || text
+  end
+
+  # Charges the user and queues an AI image. Returns false when one is already being generated.
+  # Raises User::InsufficientCredits when the balance is too low.
+  def start_ai_image!(user, prompt)
+    cost = CreditPricing.ai_image
+    started = Scene.transaction do
+      lock!
+      next false if ai_generating?
+
+      user.charge_credits!(cost, reason: "ai_image", project: project)
+      update!(ai_status: "generating", ai_error: nil)
+      true
+    end
+    GenerateSceneImageJob.perform_later(self, prompt, cost) if started
+    started
   end
 
   def selected_image

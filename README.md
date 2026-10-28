@@ -156,7 +156,7 @@ fields and buttons) and in the views.
 ## Tests and checks
 
 ```sh
-bin/rails test        # 240 tests: models, services, jobs, controllers, auth flows
+bin/rails test        # 293 tests: models, services, jobs, controllers, auth flows
 bin/rubocop           # style (rubocop-rails-omakase)
 bin/brakeman          # security scan
 bin/ci                # all of the above, plus setup, importmap audit and seeds (Rails 8.1 local CI)
@@ -201,27 +201,50 @@ the next `Script` version, records an `ApiUsage` row, and broadcasts the result 
 
 ### Scene images (step 3)
 
-`FindSceneImagesJob` (started by **Create scene**) runs in this order:
+**Create scene** offers two modes:
+- **Real photos first** (default): free Wikimedia pictures, each checked by AI, with an AI image
+  suggested where nothing real fits.
+- **AI images for every scene**: no searching; every scene is marked "AI image suggested".
+
+`FindSceneImagesJob` (real photos first) runs in this order:
 1. Splits the confirmed narration into scenes of about 10 seconds (`NarrationScenes`, no API calls).
-2. Makes one planner call (`Ai::ScenePlanner`) that returns search queries for each scene. The
-   planner is required: if it fails, each scene shows "Scene planning failed. Create scene again
-   to retry." and no image search runs.
-3. Searches Wikimedia Commons for each scene and stores up to 3 candidates with their credit,
-   license and source page. Only Public domain, CC0, CC BY and CC BY-SA images are kept. Pixabay
-   runs only when `PIXABAY_API_KEY` is set. Vision checks are not built.
+2. One planner call (`Ai::ScenePlanner`) writes search queries per scene, whether it prefers video,
+   and what the viewer should see. If planning fails, the scenes ask to retry and nothing is searched.
+3. Searches Wikimedia Commons with all of the planner's queries (written the way archives label
+   photos: specific places, machines, people, years) and gathers a pool of up to 12 images per scene;
+   broader fallback queries (`Media::QueryVariants`) are used only if the pool is small. Server errors
+   are retried. The first 2 scenes (the hook) and scenes
+   marked `prefer: video` also search Commons video (360p or better, the planner's own queries only,
+   and the title must share a real word with the query).
+4. **Relevance check** (`Ai::CandidateRanker`, one text call per project, ~$0.0006): judges every
+   candidate by its title, description, date and categories, removes off-topic ones and orders the rest.
+   Rules: a modern photo doesn't show a historical moment (but is right for scenes about today), and for
+   a scene about a specific place the candidate's metadata must mention that place.
+5. **Picture check** (`Ai::ImageVerifier`, one call per scene with up to 3 small previews, ~$0.001 per
+   scene): looks at the pictures and keeps one only if it shows the scene's actual subject in the right
+   era, without large watermarks or burned-in text. A kept picture is marked **✓ Checked**. If none
+   passes, the scene's picture is deselected and the scene is marked **AI image suggested**, so nothing
+   unchecked reaches the video. If the check itself fails, the scene is marked for manual review.
+6. **Second chance** (`Ai::QueryRewriter`, one text call): scenes still without a picture get new
+   archive-style queries and are searched, ranked and checked once more.
+
+Scenes waiting for an AI image can be generated one by one (AI generate tab) or together with
+**Generate all suggested**, which shows the total credits first and only starts if the balance covers
+all of them. Pictures you pick, upload or generate are marked as your choice and are not re-checked.
 
 **Review.** The Scenes page lists each scene as a card: thumbnail, source badge, license, credit and
 narration, with **Swap image**, **Upload** and **Remove**. **Swap image** opens the side panel for that
 scene, showing its candidates (click one to select it) and a free Commons search box. Uploads accept
 JPEG, PNG or WebP up to 10 MB. **Approve scenes & continue** is enabled once every scene has an image;
-it sets the project to `scenes_ready` and opens the Music step.
+it sets the project to `scenes_ready` and opens the Music step. A scene waiting for an AI image has no
+selected picture, so approval waits until it gets one.
 
 **AI images.** The swap panel's **AI generate** tab lets you describe an image and generate it for
 credits (`CreditPricing.ai_image`, a placeholder of 5 until pricing is decided). Credits are charged
 when you click **Generate**, and refunded automatically if generation fails. The prompt starts from
 the planner's description of the scene, and safety rules are always added (no recognizable faces of
-real people, no text or logos). Scenes the planner marked as showing a real person can't use AI
-images. AI images are stored in Active Storage, labelled **AI**, and the project's
+real people, no text or logos). Scenes the planner marked as showing a real person are generated as
+painted illustrations (oil-painting style), never photorealistic, so they can't pass as real photos. AI images are stored in Active Storage, labelled **AI**, and the project's
 `settings["ai_images"]` is set so the description can say so.
 
 **Credits.** `users.credits_balance` is the balance; `credit_transactions` records every change
@@ -250,12 +273,16 @@ an hour.
 ### Render (step 5)
 
 `RenderVideoJob` builds the MP4 with ffmpeg (`Media::Ffmpeg`), at no API cost:
-1. **Fit.** Each scene's image is fitted to 16:9. Images close to 16:9 (width/height 1.45–2.2) fill
-   the frame with a small crop. Portraits, squares and very wide images are shown whole over a
-   blurred, darkened copy of themselves, so nothing important is cut off.
-2. **Motion.** Each scene slowly zooms 7%, alternating in and out. The image is worked at double
-   size first so the zoom doesn't jitter. Each clip lasts an exact number of frames at 30 fps, so
-   the clips add up to the narration's length.
+1. **Fit.** Each scene's image is fitted to a still slightly larger than 16:9. Images close to 16:9
+   (width/height 1.45–2.2) fill it, cropped from 35% down where faces usually are; portraits,
+   squares and very wide images are shown whole over a blurred copy. The still is lightly sharpened.
+2. **Motion.** Each still zooms 7%, alternating in and out, sampled at fractional pixel positions
+   every frame (ffmpeg `perspective`, cubic) so it glides instead of shaking. Measured
+   unevenness: 0.043 (was 0.478 with `zoompan`). **Video** scenes are cut from their source
+   instead: downloaded once per render (up to 150 MB), filled to 16:9 with 5% trimmed from every
+   edge (removes most timecodes, banners and corner logos on 4:3 archive footage), and the last
+   frame is held if the clip is shorter than the scene. Each clip lasts an exact number of frames
+   at 30 fps, so the clips add up to the narration's length.
 3. **Captions.** When on (the default; a checkbox on the Render page), `Captions::AssBuilder` writes
    an ASS file from the word timings: 1–3 upper-case words at a time in the bundled Anton font,
    numbers and names in yellow, over a dark band, with the YouTube title (if written) as a hook

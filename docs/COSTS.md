@@ -56,7 +56,20 @@ the chosen speed to OpenAI.
 **Budget guide:** at about $0.07 per 5-minute video, $5 of credit covers roughly 70 videos of that
 length, or several hundred scripts with no voice-over.
 
+## Checking pictures
+
+- **Relevance check:** one text call per project, measured $0.0006 for 14 scenes.
+- **Picture check:** one call per scene with up to 3 small previews, measured $0.001 per scene
+  (about 6,400 tokens). About $0.03 for a 5-minute video.
+- **Second-chance queries:** one text call for the scenes without a picture, plus their re-checks.
+- **Measured on a 10-scene project (Panama Canal):** the whole fetch, including planner, relevance
+  check, picture checks and second chance, cost $0.0145 and took about 3.5 minutes.
+
 ## AI scene images
+
+- **Measured cost: $0.0127 per image** (`gpt-image-1-mini`, medium, 1536x1024; 4 images measured).
+  A 5-minute video with every scene as AI costs about $0.38; with real photos first, typically
+  10–20 suggested scenes, about $0.13–0.25.
 
 - Model: `gpt-image-1-mini` (cheapest image model on OpenAI's pricing page, checked 2026-10-26):
   $2.00 per 1M text input tokens, $8.00 per 1M image output tokens. The page gives no per-image price.

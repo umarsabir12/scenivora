@@ -1,3 +1,5 @@
+require "base64"
+
 module Ai
   # The only place that talks to a text-generation provider. Callers depend on
   # Result and Error, so the provider can be swapped by changing this class.
@@ -19,13 +21,22 @@ module Ai
     end
 
     # json: true asks the model for a JSON object. The prompt must also say so.
-    def call(system_prompt:, user_prompt:, temperature: 0.8, json: false)
+    # images: JPEG bytes to show the model with the user prompt, at low detail (small and cheap).
+    def call(system_prompt:, user_prompt:, temperature: 0.8, json: false, images: [])
+      user_content =
+        if images.empty?
+          user_prompt
+        else
+          [ { type: "text", text: user_prompt } ] + images.map do |jpeg|
+            { type: "image_url", image_url: { url: "data:image/jpeg;base64,#{Base64.strict_encode64(jpeg)}", detail: "low" } }
+          end
+        end
       parameters = {
         model: model,
         temperature: temperature,
         messages: [
           { role: "system", content: system_prompt },
-          { role: "user", content: user_prompt }
+          { role: "user", content: user_content }
         ]
       }
       parameters[:response_format] = { type: "json_object" } if json

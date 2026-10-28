@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_26_191754) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_28_193417) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -120,6 +120,13 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_191754) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.text "prompt"
+    t.string "media_type", default: "image", null: false
+    t.string "poster_url"
+    t.integer "duration_ms"
+    t.integer "clip_start_ms"
+    t.text "description"
+    t.string "taken_on"
+    t.text "categories"
     t.index ["scene_id"], name: "index_scene_images_on_scene_id"
   end
 
@@ -136,6 +143,8 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_191754) do
     t.jsonb "plan", default: {}, null: false
     t.string "ai_status"
     t.text "ai_error"
+    t.string "media_check"
+    t.text "media_note"
     t.index ["project_id", "position"], name: "index_scenes_on_project_id_and_position", unique: true
     t.index ["project_id"], name: "index_scenes_on_project_id"
   end
