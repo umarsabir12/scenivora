@@ -44,7 +44,7 @@ Smaller open items live in [TODO.md](TODO.md); costs in [COSTS.md](COSTS.md).
 
 | # | Task | State |
 | - | ---- | ----- |
-| 4.1 | Upgrade Ruby (3.2 was end of life) and Rails (8.0 support ends 2026-11-07) | Ruby done (3.4.12, 2026-10-28). Rails 8.1 next, then consider Ruby 4.0 |
+| 4.1 | Upgrade Ruby (3.2 was end of life) and Rails (8.0 support ends 2026-11-07) | Done: Ruby 3.4.12 and Rails 8.1.4 with 8.1 defaults (2026-10-28). Ruby 4.0 later |
 | 4.2 | Deploy (Docker image with ffmpeg + libass and the bundled fonts; Kamal or a PaaS) | Not started |
 | 4.3 | Object storage for videos and audio (S3 or Cloudflare R2) instead of local disk | Not started |
 | 4.4 | Production PostgreSQL, backups | Not started |

@@ -56,7 +56,7 @@ Deferred
 ## Platform
 
 - [x] Ruby 3.2.2 to 3.4.12 (`.ruby-version`, Dockerfile). Tests clean with deprecation warnings on.
-- [ ] Rails 8.0 to 8.1 before 2026-11-07, when 8.0 support ends.
+- [x] Rails 8.0 to 8.1.4 with `load_defaults 8.1`; new local CI runner `bin/ci`.
 - [ ] Ruby 4.0 after Rails 8.1 (4.0 moves more standard libraries into separate gems).
 
 ## Later steps

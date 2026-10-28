@@ -159,6 +159,7 @@ fields and buttons) and in the views.
 bin/rails test        # 240 tests: models, services, jobs, controllers, auth flows
 bin/rubocop           # style (rubocop-rails-omakase)
 bin/brakeman          # security scan
+bin/ci                # all of the above, plus setup, importmap audit and seeds (Rails 8.1 local CI)
 ```
 
 The tests never call OpenAI, Wikimedia or ffmpeg, so they need no API key, network or ffmpeg:
