@@ -2,12 +2,19 @@ module Ai
   # Asks the text model for one search plan per scene, in a single call per project.
   # Commons is the only source in v1; Pixabay and vision checks come later (see docs/TODO.md).
   class ScenePlanner
-    Plan = Data.define(:position, :visual_intent, :subject_type, :search_queries, :ai_fallback_allowed, :prefer) do
-      def initialize(prefer: "image", **rest)
+    DEPICTIONS = %w[normal no_face no_figure].freeze
+
+    Plan = Data.define(:position, :visual_intent, :subject_type, :search_queries, :ai_fallback_allowed, :prefer, :depiction) do
+      def initialize(prefer: "image", depiction: "normal", **rest)
         super
       end
     end
-    Result = Data.define(:plans, :total_tokens, :cost_usd)
+    # topic_depiction: the rule the whole video needs, applied to every scene at least.
+    Result = Data.define(:plans, :total_tokens, :cost_usd, :topic_depiction) do
+      def initialize(topic_depiction: "normal", **rest)
+        super
+      end
+    end
 
     SUBJECT_TYPES = %w[real_person real_place historical_event object generic_scene abstract].freeze
     MAX_QUERIES = 4
@@ -16,15 +23,17 @@ module Ai
       You are the visual director for a documentary-style video. Input: a topic and a narration
       split into numbered scenes ("beats"), each with its duration in seconds.
 
-      Return a JSON object with one entry per beat, in this shape:
-      {"beats": [
+      Return a JSON object with the video's depiction rule and one entry per beat, in this shape:
+      {"topic_depiction": "normal" | "no_face" | "no_figure",
+       "beats": [
         {
           "beat": <number>,
           "visual_intent": "<one sentence: what the viewer should see>",
           "subject_type": "real_person" | "real_place" | "historical_event" | "object" | "generic_scene" | "abstract",
           "search_queries": ["<4 queries, from specific to broad; the last is 1-3 words, usually the main name or place>"],
           "ai_fallback_allowed": true | false,
-          "prefer": "video" | "image"
+          "prefer": "video" | "image",
+          "depiction": "normal" | "no_face" | "no_figure"
         }
       ]}
 
@@ -39,6 +48,15 @@ module Ai
       - Real people: search for real photos first, and set ai_fallback_allowed to false for close-ups of a real person.
       - Never plan graphic violence, injuries or bodies. Use symbolic visuals instead (empty room, sea, candles).
       - Do not use the same subject_type for more than 3 beats in a row.
+      - Depiction of revered religious figures: use "no_figure" for any scene that involves a prophet
+        (for example the Prophet Muhammad, Jesus or Moses): they must not be shown in any form. Use
+        "no_face" for scenes centred on the Prophet's companions (Sahaba), the Ahl al-Bayt, saints or
+        other figures many believers would not want depicted: they may appear only from behind, in
+        silhouette or far away. Everything else is "normal". For "no_figure" and "no_face" beats the
+        visual_intent must already follow the rule (e.g. "cavalry silhouettes on a ridge at dawn").
+      - topic_depiction is the rule for the whole video: "no_face" when the video is about a companion
+        of the Prophet or another revered figure (every scene then follows it, including battles and
+        maps), "no_figure" when it is about a prophet, otherwise "normal".
       - Prefer video for beats 1 and 2 (the hook) and for action: travel, crowds, vehicles, weather,
         battles, ceremonies. Prefer images for portraits and documents.
       - Return only the JSON object.
@@ -61,7 +79,9 @@ module Ai
       result = @generator.call(system_prompt: SYSTEM_PROMPT, user_prompt: user_prompt(topic, scenes),
                                temperature: 0.2, json: true)
 
-      Result.new(plans: parse(result.text, scenes), total_tokens: result.total_tokens, cost_usd: result.cost_usd)
+      data = parse_json(result.text)
+      Result.new(plans: plans_from(data, scenes), total_tokens: result.total_tokens, cost_usd: result.cost_usd,
+                 topic_depiction: DEPICTIONS.include?(data["topic_depiction"]) ? data["topic_depiction"] : "normal")
     end
 
     private
@@ -70,18 +90,21 @@ module Ai
         "Topic: #{topic}\n\n#{beats.join("\n")}"
       end
 
-      # Scenes the model skipped or answered badly get an empty plan, so the caller can fall back.
-      def parse(text, scenes)
+      def parse_json(text)
         data = JSON.parse(text)
-        beats = data.is_a?(Hash) ? Array(data["beats"]) : []
-        by_number = beats.index_by { |beat| beat["beat"].to_i }
+        data.is_a?(Hash) ? data : {}
+      rescue JSON::ParserError
+        raise Ai::Error, "Scene planner returned invalid JSON"
+      end
+
+      # Scenes the model skipped or answered badly get an empty plan, so the caller can fall back.
+      def plans_from(data, scenes)
+        by_number = Array(data["beats"]).index_by { |beat| beat["beat"].to_i }
 
         scenes.to_h do |scene|
           beat = by_number[scene.position] || {}
           [ scene.position, plan_for(scene.position, beat) ]
         end
-      rescue JSON::ParserError
-        raise Ai::Error, "Scene planner returned invalid JSON"
       end
 
       def plan_for(position, beat)
@@ -92,7 +115,8 @@ module Ai
           subject_type: SUBJECT_TYPES.include?(subject) ? subject : "generic_scene",
           search_queries: Array(beat["search_queries"]).map { |q| q.to_s.strip }.reject(&:empty?).first(MAX_QUERIES),
           ai_fallback_allowed: beat["ai_fallback_allowed"] == true,
-          prefer: beat["prefer"] == "video" ? "video" : "image"
+          prefer: beat["prefer"] == "video" ? "video" : "image",
+          depiction: DEPICTIONS.include?(beat["depiction"]) ? beat["depiction"] : "normal"
         )
       end
   end

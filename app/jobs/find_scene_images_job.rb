@@ -66,6 +66,7 @@ class FindSceneImagesJob < ApplicationJob
       scenes = project.scenes.order(:position).to_a
       result = Ai::ScenePlanner.new.call(topic: project.prompt, scenes: scenes)
       record_usage(project, result)
+      project.update!(settings: project.settings.merge("topic_depiction" => result.topic_depiction))
 
       scenes.each do |scene|
         plan = result.plans.fetch(scene.position)
@@ -142,15 +143,20 @@ class FindSceneImagesJob < ApplicationJob
     # the video. The user's own uploads and AI images are left alone.
     def check_pictures(project, only: nil)
       verifier = Ai::ImageVerifier.new
-      scenes = project.scenes.includes(:images).to_a
-      scenes = scenes.select { |scene| only.map(&:id).include?(scene.id) } if only
+      all_scenes = project.scenes.includes(:images).to_a
+      # A picture is used once per video: pictures other scenes already show can't be picked again.
+      used = all_scenes.filter_map { |scene| scene.selected_image&.image_url if scene.media_check.in?(%w[verified chosen]) }
+      scenes = only ? all_scenes.select { |scene| only.map(&:id).include?(scene.id) } : all_scenes
       scenes.each do |scene|
         next if scene.selected_image&.stored_file?
 
-        candidates = scene.images.reject(&:stored_file?).sort_by { |media| media.selected? ? 0 : 1 }
+        used.delete(scene.selected_image&.image_url) if scene.media_check.in?(%w[verified chosen])
+        candidates = scene.images.reject { |media| media.stored_file? || used.include?(media.image_url) }
+                              .sort_by { |media| media.selected? ? 0 : 1 }
         next suggest_ai(scene, scene.search_error.presence || "No free picture was found.") if candidates.empty?
 
-        check_scene(project, scene, candidates, verifier)
+        chosen = check_scene(project, scene, candidates, verifier)
+        used << chosen.image_url if chosen
       end
     end
 
@@ -159,15 +165,25 @@ class FindSceneImagesJob < ApplicationJob
       project.api_usages.create!(provider: Ai::TextGenerator::PROVIDER, operation: "image_check",
                                  units: result.total_tokens, cost_usd: result.cost_usd)
 
-      if (chosen = candidates.find { |media| media.id == result.choice_id })
+      chosen = candidates.find { |media| media.id == result.choice_id }
+      # A scene about a revered figure never shows a face, whatever else the check thought of the picture.
+      if chosen && result.faces && scene.depiction != "normal"
+        suggest_ai(scene, "The best real picture shows faces, which this video avoids for revered figures.")
+        return nil
+      end
+
+      if chosen
         chosen.select!
         scene.update!(media_check: "verified", media_note: result.reason, search_error: nil)
+        chosen
       else
         suggest_ai(scene, "No real picture fits. #{result.reason}".strip)
+        nil
       end
     rescue Ai::Error => e
       Rails.logger.warn("Picture check failed for scene #{scene.id}: #{e.message}")
       scene.update!(media_check: nil, media_note: "The picture check failed. Review this scene yourself.")
+      nil
     end
 
     # Scenes still without a picture get new, archive-style queries (one call for all of them), and are

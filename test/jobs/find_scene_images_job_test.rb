@@ -21,10 +21,11 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
   class FakePlanner
     attr_reader :calls
 
-    def initialize(error: nil, plans: nil, queries: nil)
+    def initialize(error: nil, plans: nil, queries: nil, topic_depiction: "normal")
       @error = error
       @plans = plans
       @queries = queries
+      @topic_depiction = topic_depiction
       @calls = 0
     end
 
@@ -36,7 +37,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
         [ scene.position, Ai::ScenePlanner::Plan.new(position: scene.position, visual_intent: "Scene #{scene.position}",
           subject_type: "generic_scene", search_queries: @queries || [ "Tesla #{scene.position}" ], ai_fallback_allowed: true) ]
       end
-      Ai::ScenePlanner::Result.new(plans: plans, total_tokens: 700, cost_usd: BigDecimal("0.0001"))
+      Ai::ScenePlanner::Result.new(plans: plans, total_tokens: 700, cost_usd: BigDecimal("0.0001"), topic_depiction: @topic_depiction)
     end
   end
 
@@ -91,9 +92,10 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
   class FakeVerifier
     attr_reader :calls
 
-    def initialize(choose: ->(candidates) { candidates.first&.id }, error: nil)
+    def initialize(choose: ->(candidates) { candidates.first&.id }, error: nil, faces: false)
       @choose = choose
       @error = error
+      @faces = faces
       @calls = 0
     end
 
@@ -102,7 +104,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
       raise @error if @error
 
       Ai::ImageVerifier::Result.new(choice_id: @choose.call(candidates), reason: "Shows the scene.", total_tokens: 900,
-                                    cost_usd: BigDecimal("0.0002"))
+                                    cost_usd: BigDecimal("0.0002"), faces: @faces)
     end
   end
 
@@ -325,7 +327,13 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
       Ai::ScenePlanner::Result.new(plans: plans, total_tokens: 700, cost_usd: BigDecimal("0.0001"))
     end
 
-    run_job(planner: planner, videos: FakeVideoSearch.new(videos: [ video("refugees") ]))
+    # A different video per query, so the no-repeat rule doesn't get in the way.
+    per_query = Object.new
+    per_query.define_singleton_method(:search) { |query, limit:| [ video_for(query) ] }
+    test_case = self
+    per_query.define_singleton_method(:video_for) { |query| test_case.video(query.parameterize) }
+
+    run_job(planner: planner, videos: per_query)
 
     assert @project.reload.scenes.find_by(position: 4).selected_image.video?
   end
@@ -462,5 +470,52 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     run_job(rewriter: rewriter)
 
     assert_equal 0, rewriter.calls
+  end
+
+  test "a picture is used in only one scene" do
+    same = Class.new do
+      def search(_query, limit: 3)
+        [ Media::ImageResult.new(provider: "wikimedia_commons", image_url: "https://img.example/same.jpg",
+                                 page_url: "https://src.example", credit: "Jane", license: "CC0") ]
+      end
+    end.new
+
+    run_job(commons: same)
+
+    selected = @project.reload.scenes.filter_map(&:selected_image).map(&:image_url)
+    assert_equal [ "https://img.example/same.jpg" ], selected
+    assert @project.scenes.drop(1).all?(&:ai_suggested?)
+  end
+
+  test "the planner's topic-wide depiction rule is saved and applies to every scene" do
+    planner = FakePlanner.new
+    planner.define_singleton_method(:call) do |topic:, scenes:|
+      plans = scenes.to_h do |scene|
+        [ scene.position, Ai::ScenePlanner::Plan.new(position: scene.position, visual_intent: "x", subject_type: "historical_event",
+            search_queries: [ "Yarmouk #{scene.position}" ], ai_fallback_allowed: true) ]
+      end
+      Ai::ScenePlanner::Result.new(plans: plans, total_tokens: 700, cost_usd: BigDecimal("0.0001"), topic_depiction: "no_face")
+    end
+
+    run_job(planner: planner)
+
+    @project.reload
+    assert_equal "no_face", @project.settings["topic_depiction"]
+    assert @project.scenes.all? { |scene| scene.depiction == "no_face" }
+  end
+
+  test "in a video about a revered figure, a picture showing faces is never selected" do
+    run_job(planner: FakePlanner.new(topic_depiction: "no_face"), verifier: FakeVerifier.new(faces: true))
+
+    scene = @project.reload.scenes.first
+    assert scene.ai_suggested?
+    assert_nil scene.selected_image
+    assert_match "shows faces", scene.media_note
+  end
+
+  test "faces are fine in an ordinary video" do
+    run_job(verifier: FakeVerifier.new(faces: true))
+
+    assert_equal "verified", @project.reload.scenes.first.media_check
   end
 end

@@ -8,7 +8,7 @@ class GenerateSceneImageJob < ApplicationJob
     style = scene.ai_style
     result = Ai::ImageGenerator.new.call(prompt: prompt, style: style)
 
-    label = style == "illustration" ? "AI illustration" : "AI generated"
+    label = style == "photo" ? "AI generated" : "AI illustration"
     image = scene.images.build(provider: SceneImage::AI_PROVIDER, credit: label, license: label, prompt: prompt)
     image.file.attach(io: StringIO.new(result.image), filename: "scene-#{scene.id}-ai.png", content_type: result.content_type)
     image.save!

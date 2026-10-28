@@ -101,4 +101,23 @@ class Ai::ScenePlannerTest < ActiveSupport::TestCase
     assert estimate > 0
     assert estimate < 0.01
   end
+
+  test "reads how each beat may depict people, defaulting to normal" do
+    text = { beats: [ { beat: 1, depiction: "no_face" }, { beat: 2, depiction: "something else" } ] }.to_json
+
+    planner, generator = planner_for(text)
+    plans = planner.call(topic: "Khalid ibn al-Walid", scenes: beats).plans
+
+    assert_equal "no_face", plans[1].depiction
+    assert_equal "normal", plans[2].depiction
+    assert_includes generator.calls.first[:system_prompt], "\"no_figure\" for any scene that involves a prophet"
+  end
+
+  test "returns the video-wide depiction rule, defaulting to normal" do
+    planner, = planner_for({ topic_depiction: "no_face", beats: [] }.to_json)
+    assert_equal "no_face", planner.call(topic: "Khalid ibn al-Walid", scenes: beats).topic_depiction
+
+    planner, = planner_for({ beats: [] }.to_json)
+    assert_equal "normal", planner.call(topic: "Tides", scenes: beats).topic_depiction
+  end
 end

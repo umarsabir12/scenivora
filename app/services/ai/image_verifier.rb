@@ -2,9 +2,22 @@ module Ai
   # Looks at a scene's best candidates (small previews) and picks one that truly fits the scene,
   # or none. This is what keeps off-topic, wrong-era or watermarked pictures out of the video.
   class ImageVerifier
-    Result = Data.define(:choice_id, :reason, :total_tokens, :cost_usd)
+    # faces: whether the chosen picture shows any person's face (painted, drawn or photographed).
+    Result = Data.define(:choice_id, :reason, :total_tokens, :cost_usd, :faces) do
+      def initialize(faces: false, **rest)
+        super
+      end
+    end
 
     LETTERS = %w[A B C].freeze
+
+    DEPICTION_RULES = {
+      "normal" => "",
+      "no_face" => "This scene involves a revered religious figure. Reject any picture that shows this person's " \
+                   "face, including paintings, miniatures and film stills.",
+      "no_figure" => "This scene involves a prophet. Reject any picture that depicts this person in any form, " \
+                     "including silhouettes, veiled figures, paintings and miniatures."
+    }.freeze
 
     SYSTEM_PROMPT = <<~PROMPT.freeze
       You check pictures for one scene of a documentary video. You get the scene's narration, what the
@@ -22,13 +35,17 @@ module Ai
       - it is mostly text, a document page, a chart or a logo, unless the scene is about that;
       - it has a large watermark, burned-in subtitles or channel branding;
       - it is graphic or disturbing;
-      - it is blurry, tiny or badly damaged.
+      - it is blurry, tiny or badly damaged;
+      - it has visible text (map labels, captions, signs) in a language other than English.
       A symbolic picture is fine only when the scene itself is about an idea rather than a specific
       moment, and it must still fit the scene's era. When the scene is about lasting effects or today,
       a modern photo of the subject is right. You cannot identify people from their faces: judge
       people by context, clothing, era and the file title. If no picture is right, choose none.
 
-      Return only JSON: {"choice": "A" | "B" | "C" | null, "reason": "<one short sentence>"}
+      Return only JSON:
+      {"choice": "A" | "B" | "C" | null,
+       "faces": <true if the chosen picture shows any person's face, painted, drawn or photographed>,
+       "reason": "<one short sentence>"}
     PROMPT
 
     def initialize(generator: Ai::TextGenerator.new, previews: Media::PreviewFetcher.new)
@@ -56,7 +73,7 @@ module Ai
       data = JSON.parse(result.text)
       index = LETTERS.index(data["choice"].to_s.strip.upcase) if data.is_a?(Hash)
       Result.new(choice_id: index && shown[index]&.id, reason: data.is_a?(Hash) ? data["reason"].to_s.first(300) : "",
-                 total_tokens: result.total_tokens, cost_usd: result.cost_usd)
+                 faces: data.is_a?(Hash) && data["faces"] == true, total_tokens: result.total_tokens, cost_usd: result.cost_usd)
     rescue JSON::ParserError
       raise Ai::Error, "Picture check returned invalid JSON"
     end
@@ -74,7 +91,8 @@ module Ai
           dated = candidate.taken_on.present? ? " (taken #{candidate.taken_on})" : ""
           "#{LETTERS[index]}: [#{candidate.media_type}] #{candidate.source_title}#{dated}"
         end
-        "Narration: #{scene.text}\nShould show: #{scene.plan["visual_intent"].presence || scene.text}\n\n#{lines.join("\n")}"
+        "Narration: #{scene.text}\nShould show: #{scene.plan["visual_intent"].presence || scene.text}\n" \
+          "#{DEPICTION_RULES[scene.depiction]}\n\n#{lines.join("\n")}"
       end
   end
 end

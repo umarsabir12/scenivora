@@ -54,4 +54,12 @@ class Ai::CandidateRankerTest < ActiveSupport::TestCase
   test "invalid JSON raises a clear error" do
     assert_raises(Ai::Error) { rank("nope") }
   end
+
+  test "marks scenes with a depiction rule for the check" do
+    @scene.update!(plan: @scene.plan.merge("depiction" => "no_figure"))
+
+    _result, generator = rank({ scenes: [] }.to_json)
+
+    assert_includes generator.args[:user_prompt], "Scene 1 [no_figure]:"
+  end
 end

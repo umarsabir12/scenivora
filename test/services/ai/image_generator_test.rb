@@ -76,4 +76,14 @@ class Ai::ImageGeneratorTest < ActiveSupport::TestCase
   test "an unknown style is refused" do
     assert_raises(ArgumentError) { generator_with(FakeImages.new(response: response)).call(prompt: "x", style: "3d") }
   end
+
+  test "the no_face style never shows a face and the no_figure style shows no people" do
+    images = FakeImages.new(response: response)
+    generator_with(images).call(prompt: "Cavalry crossing a desert ridge at dawn", style: "no_face")
+    assert_includes images.parameters[:prompt], "no face is ever visible"
+    assert_includes images.parameters[:prompt], "calligraphy"
+
+    generator_with(images).call(prompt: "The city of Medina at dusk", style: "no_figure")
+    assert_includes images.parameters[:prompt], "no people in it at all"
+  end
 end

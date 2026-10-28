@@ -19,6 +19,9 @@ module Ai
       - When the scene is about a specific place, keep a candidate only if its title, description or
         categories mention that place (or a place inside it). Machinery, buildings or crowds from
         somewhere else don't count, however similar they look.
+      - Scenes marked "no_face" involve a revered religious figure: leave out any painting, miniature or
+        film still that shows that person's face. Scenes marked "no_figure" involve a prophet: leave out
+        anything that depicts that person in any form.
       Order the kept ids best first. A scene may keep none.
 
       Return only JSON: {"scenes": [{"scene": <number>, "keep": [<ids>]}]}
@@ -38,7 +41,8 @@ module Ai
       def user_prompt(topic, scenes)
         blocks = scenes.map do |scene|
           lines = scene.images.reject(&:stored_file?).map { |media| "  #{media.id} [#{media.media_type}] #{candidate_details(media)}" }
-          "Scene #{scene.position}: #{scene.plan["visual_intent"].presence || scene.text}\n#{lines.join("\n")}"
+          marker = scene.depiction == "normal" ? "" : " [#{scene.depiction}]"
+          "Scene #{scene.position}#{marker}: #{scene.plan["visual_intent"].presence || scene.text}\n#{lines.join("\n")}"
         end
         "Topic: #{topic}\n\n#{blocks.join("\n\n")}"
       end

@@ -26,7 +26,16 @@ module Ai
                  "signs, logos, watermarks, flags or religious symbols. No graphic violence or injuries.",
       "illustration" => "A hand-painted historical illustration in an oil-painting style, with visible brush " \
                         "strokes: clearly a painting, never a photograph. No text, captions, signs, logos or " \
-                        "watermarks. No graphic violence or injuries."
+                        "watermarks. No graphic violence or injuries.",
+      # Revered religious figures, such as the Prophet's companions: never a face.
+      "no_face" => "A cinematic painted historical scene, true to the era and region described. People appear " \
+                   "only from behind, in silhouette against the light, or far in the distance: no face is ever " \
+                   "visible. No text, letters, calligraphy, banners with writing, logos or watermarks. No graphic " \
+                   "violence, blood or injuries.",
+      # Prophets: not shown in any form, not even as a silhouette.
+      "no_figure" => "A cinematic painted historical scene with no people in it at all: no figures, silhouettes " \
+                     "or crowds. Show the place, the landscape, architecture, objects or light, true to the era and " \
+                     "region described. No text, letters, calligraphy, logos or watermarks."
     }.freeze
 
     def initialize(model: ENV.fetch("OPENAI_IMAGE_MODEL", DEFAULT_MODEL), client: nil)

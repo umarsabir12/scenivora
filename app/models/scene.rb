@@ -17,9 +17,21 @@ class Scene < ApplicationRecord
     start_ms + duration_ms
   end
 
-  # The planner marks scenes that show a real person. Their AI images are painted illustrations,
-  # never photorealistic, so they can't be mistaken for real photographs of that person.
+  # How this scene's people may be shown, as marked by the planner: "normal", "no_face" (revered
+  # figures such as the Prophet's companions) or "no_figure" (prophets: not shown in any form).
+  # The stricter of this scene's own rule and the whole video's rule (project settings "topic_depiction").
+  def depiction
+    rules = Ai::ScenePlanner::DEPICTIONS
+    own = plan["depiction"].presence_in(rules) || "normal"
+    topic = project.settings["topic_depiction"].presence_in(rules) || "normal"
+    [ own, topic ].max_by { |rule| rules.index(rule) }
+  end
+
+  # The style of this scene's AI image. Revered figures follow their depiction rule; other real
+  # people are painted illustrations, never photorealistic, so they can't pass as real photographs.
   def ai_style
+    return depiction unless depiction == "normal"
+
     plan.fetch("ai_fallback_allowed", true) == false ? "illustration" : "photo"
   end
 

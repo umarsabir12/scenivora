@@ -69,4 +69,20 @@ class Ai::ImageVerifierTest < ActiveSupport::TestCase
 
     assert_raises(Ai::Error) { verify({ choice: "A" }.to_json, previews: FakePreviews.new(skip: all)) }
   end
+
+  test "tells the check when a scene must not show a revered figure's face" do
+    @scene.update!(plan: @scene.plan.merge("depiction" => "no_face"))
+
+    _result, generator = verify({ choice: nil }.to_json)
+
+    assert_includes generator.args[:user_prompt], "Reject any picture that shows this person's face"
+  end
+
+  test "reports whether the chosen picture shows faces" do
+    result, = verify({ choice: "A", faces: true, reason: "A painted battle with warriors' faces." }.to_json)
+    assert result.faces
+
+    result, = verify({ choice: "A", reason: "A map." }.to_json)
+    assert_not result.faces
+  end
 end
