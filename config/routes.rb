@@ -14,7 +14,15 @@ Rails.application.routes.draw do
     resource :scenes, only: %i[show create] do
       post :approve
     end
-    resource :music, only: :show, controller: "music"
+    resource :music, only: %i[show create update destroy], controller: "music" do
+      post :upload
+      post :continue
+    end
+    resource :render, only: %i[show create], controller: "renders"
+    resource :publish, only: %i[show update], controller: "publish" do
+      post :generate
+      get :captions
+    end
   end
 
   scope "scenes/:scene_id", as: "scene" do

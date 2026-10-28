@@ -148,4 +148,19 @@ class GenerateVoiceJobTest < ActiveJob::TestCase
 
     assert @track.reload.stale_for?(@project.latest_script)
   end
+
+  test "makes one part per paragraph and stores each part's timing" do
+    @script.update!(body: "First paragraph about the Nile.\n\nSecond paragraph about the flood.")
+    @track.update!(script_digest: @script.reload.digest)
+    speech = FakeSpeech.new
+
+    run_job(speech: speech)
+
+    assert_equal [ "First paragraph about the Nile.", "Second paragraph about the flood." ], speech.calls.map { |call| call[:text] }
+    timings = @track.reload.timings
+    assert_equal [ "First paragraph about the Nile.", "Second paragraph about the flood." ], timings.map { |part| part["text"] }
+    assert_equal 0, timings.first["start_ms"]
+    assert_equal timings.first["end_ms"], timings.last["start_ms"]
+    assert_equal 90_500, timings.last["end_ms"]
+  end
 end

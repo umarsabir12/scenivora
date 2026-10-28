@@ -55,7 +55,28 @@ Deferred
 
 ## Later steps
 
-- [ ] Step 4: background music.
-- [ ] Step 5: render MP4.
-- [ ] Step 6: title, description, tags, publish.
+- [x] Step 4: background music (Commons library or upload, volume).
+- [x] Step 5: render MP4 (1080p, local ffmpeg, thumbnail).
+- [x] Step 6: AI title, description, tags and category, with a credits footer; downloads.
+- [ ] One-click YouTube upload (needs Google OAuth and the YouTube Data API; a Google Cloud project and keys).
+- [ ] Analytics dashboard.
+- [x] Captions step 1: paragraph-timed narration and an SRT download for YouTube.
+- [x] Captions step 2: burned-in captions (1–3 words, yellow numbers and names, hook title, dark band)
+      via an ASS file, using Homebrew's ffmpeg-full and the bundled Anton font.
+- [ ] Soften the top edge of the caption band (a gradient instead of a hard edge).
+- [ ] Caption keywords from the planner, not just numbers and capitalised words.
+- [ ] Hook text from the planner, so the first render has a hook (today it uses the YouTube title,
+      which exists only after **Write details**).
+- [ ] Fix the plain Homebrew `ffmpeg` on this machine: `brew upgrade ffmpeg` (it failed while
+      ghcr.io was unreachable; installing ffmpeg-full upgraded a library it depends on).
+- [ ] Captions option A: word-accurate timings from transcription (Whisper, $0.006/minute on
+      OpenAI's pricing page, checked 2026-10-27). Confirm word timestamps are still returned before building.
+- [ ] Upload the SRT as a YouTube caption track automatically (needs the youtube.force-ssl OAuth scope).
+- [x] Render polish: image fit with blurred background, Ken Burns zoom alternating in and out, music
+      ducked under the voice, loudness -14 LUFS, vignette.
+- [ ] Mark a render as out of date when scenes, music or narration change after it.
+- [ ] Recover a project stuck in `rendering` after a worker crash.
+- [ ] Decide whether rendering and YouTube details charge credits (both currently free to the user).
+- [ ] File expiry for rendered videos (the mockup shows "expires in 7 days").
+- [ ] Music library page in the sidebar (currently "Soon").
 - [ ] Production setup: storage, database password, deployment.

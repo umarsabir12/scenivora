@@ -1,0 +1,76 @@
+<% content_for :title, "Render · #{@project.title} · Scenivora" %>
+<%= turbo_stream_from @project, :render %>
+
+<div class="mx-auto max-w-5xl space-y-6">
+  <header class="flex flex-wrap items-start justify-between gap-4">
+    <div class="min-w-0">
+      <%= link_to "← #{@project.title}", project_path(@project), class: "block max-w-xl truncate text-sm text-zinc-400 hover:text-zinc-200" %>
+    </div>
+    <%= render "projects/status_badge", project: @project %>
+  </header>
+
+  <%= render "projects/wizard", project: @project, current: "Render" %>
+
+  <section class="space-y-5 rounded-2xl border border-white/5 bg-[#161920] p-6" aria-labelledby="render-heading">
+    <div>
+      <h2 id="render-heading" class="text-lg font-semibold">Render video</h2>
+      <p class="mt-1 text-sm text-zinc-400">1080p MP4, rendered on this machine with ffmpeg. Rendering costs no credits.</p>
+    </div>
+
+    <% voice = @project.voice_track %>
+    <dl class="grid gap-3 text-sm sm:grid-cols-3">
+      <div class="rounded-xl border border-white/5 bg-white/[0.03] p-4">
+        <dt class="text-xs uppercase tracking-wide text-zinc-500">Narration</dt>
+        <dd class="mt-1 text-zinc-200"><%= voice.voice_name.capitalize %> · <%= format("%.2f", voice.speed) %>x · <%= format_timecode(voice.duration_ms.to_i) %></dd>
+      </div>
+      <div class="rounded-xl border border-white/5 bg-white/[0.03] p-4">
+        <dt class="text-xs uppercase tracking-wide text-zinc-500">Scenes</dt>
+        <dd class="mt-1 text-zinc-200"><%= pluralize(@project.scenes.size, "scene") %></dd>
+      </div>
+      <div class="rounded-xl border border-white/5 bg-white/[0.03] p-4">
+        <dt class="text-xs uppercase tracking-wide text-zinc-500">Music</dt>
+        <dd class="mt-1 truncate text-zinc-200"><%= @music ? "#{@music.title} · #{@music.volume}%" : "None" %></dd>
+      </div>
+    </dl>
+
+    <% if @project.rendering? %>
+      <%= render "renders/progress", message: "Starting..." %>
+    <% else %>
+      <% if @project.settings["render_warning"].present? %>
+        <p class="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-200" role="status"><%= @project.settings["render_warning"] %></p>
+      <% end %>
+      <% if @project.render_error.present? %>
+        <p class="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300" role="alert"><%= @project.render_error %></p>
+      <% end %>
+
+      <% if @project.rendered? && @project.video.attached? %>
+        <video controls preload="metadata" class="aspect-video w-full rounded-xl bg-black"
+               src="<%= rails_blob_path(@project.video, disposition: "inline") %>"
+               <% if @project.thumbnail.attached? %>poster="<%= rails_blob_path(@project.thumbnail, disposition: "inline") %>"<% end %>></video>
+
+        <div class="flex flex-wrap items-center gap-3">
+          <%= link_to "Continue to publish", project_publish_path(@project), class: button_classes %>
+        </div>
+      <% end %>
+
+      <%= form_with url: project_render_path(@project), method: :post, class: "space-y-3 border-t border-white/5 pt-5",
+            data: { turbo_confirm: (@project.video.attached? ? "Render the video again? The current video is kept until the new one is ready." : nil) } do |form| %>
+        <label class="flex items-start gap-3 text-sm">
+          <%= hidden_field_tag :captions, "0", id: nil %>
+          <%= check_box_tag :captions, "1", @project.captions_enabled?, class: "mt-0.5 size-4 accent-amber-400" %>
+          <span>
+            <span class="font-medium text-zinc-200">Burn captions into the video</span>
+            <span class="block text-xs text-zinc-500">
+              Large words at the bottom, names and numbers in yellow.
+              <% unless @captions_supported %>
+                <span class="text-amber-300">This machine's ffmpeg can't draw text, so captions would be skipped. Install `ffmpeg-full` with Homebrew.</span>
+              <% end %>
+            </span>
+          </span>
+        </label>
+        <%= form.submit (@project.video.attached? ? "Re-render" : "Render video"),
+              class: (@project.video.attached? ? secondary_button_classes : button_classes) %>
+      <% end %>
+    <% end %>
+  </section>
+</div>

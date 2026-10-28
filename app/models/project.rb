@@ -2,6 +2,8 @@ class Project < ApplicationRecord
   TONES = %w[documentary dramatic inspirational casual].freeze
   TARGET_LENGTH_MINUTES = (3..10).freeze
   WORDS_PER_MINUTE = 150
+  SCENES_APPROVED_STATUSES = %w[scenes_ready media_ready rendering rendered].freeze
+  MEDIA_READY_STATUSES = %w[media_ready rendering rendered].freeze
 
   belongs_to :user
   has_many :scripts, -> { order(:version) }, dependent: :destroy, inverse_of: :project
@@ -10,6 +12,9 @@ class Project < ApplicationRecord
   has_many :credit_transactions, dependent: :nullify
   has_many :scenes, -> { order(:position) }, dependent: :destroy
   has_one :voice_track, -> { voice }, class_name: "AudioTrack", dependent: :destroy, inverse_of: :project
+  has_one :music_track, -> { music }, class_name: "AudioTrack", dependent: :destroy, inverse_of: :project
+  has_one_attached :video
+  has_one_attached :thumbnail
 
   enum :status, {
     draft: "draft",
@@ -27,6 +32,9 @@ class Project < ApplicationRecord
   validates :prompt, presence: true, length: { maximum: 2_000 }
   validates :tone, inclusion: { in: TONES }
   validates :target_length_minutes, numericality: { only_integer: true, in: TARGET_LENGTH_MINUTES }
+  validates :yt_title, length: { maximum: Ai::MetadataGenerator::MAX_TITLE }
+  validates :yt_description, length: { maximum: 5_000 }
+  validates :yt_category, inclusion: { in: Ai::MetadataGenerator::CATEGORIES }, allow_blank: true
 
   def latest_script
     scripts.last
@@ -34,6 +42,19 @@ class Project < ApplicationRecord
 
   def next_script_version
     (scripts.maximum(:version) || 0) + 1
+  end
+
+  # Captions are burned into the video unless the user turned them off.
+  def captions_enabled?
+    settings["captions"] != false
+  end
+
+  def scenes_approved?
+    SCENES_APPROVED_STATUSES.include?(status)
+  end
+
+  def media_approved?
+    MEDIA_READY_STATUSES.include?(status)
   end
 
   # Any status past draft has a script, so the Voice step stays reachable in later steps too.

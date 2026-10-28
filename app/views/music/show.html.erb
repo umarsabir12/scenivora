@@ -1,4 +1,5 @@
 <% content_for :title, "Music · #{@project.title} · Scenivora" %>
+<%= turbo_stream_from @project, :music %>
 
 <div class="mx-auto max-w-5xl space-y-6">
   <header class="flex flex-wrap items-start justify-between gap-4">
@@ -10,11 +11,117 @@
 
   <%= render "projects/wizard", project: @project, current: "Music" %>
 
-  <section class="rounded-2xl border border-dashed border-white/10 bg-[#161920] px-6 py-16 text-center">
-    <h2 class="text-lg font-semibold">Music is the next step</h2>
-    <p class="mx-auto mt-2 max-w-md text-sm text-zinc-400">
-      Your scenes are approved. This step will add background music under the narration. It isn't built yet.
-    </p>
-    <%= link_to "Back to scenes", project_scenes_path(@project), class: "mt-6 inline-flex #{secondary_button_classes}" %>
-  </section>
+  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+    <section class="min-w-0 space-y-4 rounded-2xl border border-white/5 bg-[#161920] p-6" aria-labelledby="library-heading">
+      <div>
+        <h2 id="library-heading" class="text-lg font-semibold">Music library</h2>
+        <p class="mt-1 text-sm text-zinc-400">
+          Free tracks from Wikimedia Commons (Public Domain, CC0, CC BY, CC BY-SA), 1 to 15 minutes long.
+          Short tracks loop under the narration.
+        </p>
+      </div>
+
+      <%= form_with url: project_music_path(@project), method: :get, class: "flex gap-2" do |form| %>
+        <%= form.label :q, "Search music", class: "sr-only" %>
+        <%= form.search_field :q, value: @query, placeholder: "Search music, e.g. ambient piano", class: field_classes.sub("mt-1 ", "") %>
+        <%= form.submit "Search", name: nil, class: small_button_classes %>
+      <% end %>
+
+      <% if @search_error %>
+        <p class="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300" role="alert"><%= @search_error %></p>
+      <% elsif @results.empty? %>
+        <p class="rounded-xl border border-dashed border-white/10 p-4 text-sm text-zinc-400">No free tracks found. Try other words.</p>
+      <% else %>
+        <ul class="space-y-3" role="list">
+          <% @results.each do |result| %>
+            <li class="space-y-2 rounded-xl border border-white/5 p-4">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="font-medium text-zinc-200"><%= result.title %></p>
+                  <p class="text-xs text-zinc-500">
+                    <%= result.credit %> · <%= result.license %> · <%= format_timecode(result.duration_ms) %>
+                  </p>
+                </div>
+                <%= button_to "Use this track", project_music_path(@project), method: :post, class: small_button_classes,
+                      params: { audio_url: result.audio_url, title: result.title, credit: result.credit,
+                                license: result.license, page_url: result.page_url } %>
+              </div>
+              <audio controls preload="none" class="h-9 w-full" src="<%= result.audio_url %>"></audio>
+            </li>
+          <% end %>
+        </ul>
+      <% end %>
+    </section>
+
+    <aside class="self-start space-y-5 rounded-2xl border border-white/5 bg-[#161920] p-5 lg:sticky lg:top-24" aria-labelledby="track-heading">
+      <div>
+        <h2 id="track-heading" class="text-lg font-semibold">Background music</h2>
+        <p class="mt-1 text-sm text-zinc-400">Optional. Plays quietly under the narration and fades out at the end.</p>
+      </div>
+
+      <% if @track.nil? %>
+        <p class="rounded-xl border border-dashed border-white/10 p-4 text-sm text-zinc-400">No music chosen. The video will have narration only.</p>
+      <% elsif @track.pending? || @track.processing? %>
+        <p class="flex items-center gap-3 rounded-xl border border-dashed border-amber-400/40 bg-amber-400/5 p-4 text-sm font-medium text-amber-300" role="status">
+          <%= render "scenes/spinner" %>
+          Preparing "<%= @track.title %>"...
+        </p>
+      <% elsif @track.failed? %>
+        <div class="space-y-3 rounded-xl border border-red-500/30 bg-red-500/10 p-4" role="alert">
+          <p class="text-sm text-red-300"><%= @track.error.presence || "The track could not be prepared." %></p>
+          <%= button_to "Remove", project_music_path(@project), method: :delete, class: small_button_classes %>
+        </div>
+      <% else %>
+        <div class="space-y-3">
+          <div>
+            <p class="font-medium text-zinc-200"><%= @track.title %></p>
+            <p class="text-xs text-zinc-500">
+              <% if @track.page_url.present? %>
+                <%= link_to @track.credit, @track.page_url, target: "_blank", rel: "noopener", class: "hover:underline" %>
+              <% else %>
+                <%= @track.credit %>
+              <% end %>
+              · <%= @track.license %> · <%= format_timecode(@track.duration_ms.to_i) %>
+            </p>
+          </div>
+          <audio controls preload="metadata" class="h-9 w-full" src="<%= rails_blob_path(@track.file, disposition: "inline") %>"></audio>
+
+          <%= form_with url: project_music_path(@project), method: :patch, data: { controller: "percent-output" } do |form| %>
+            <div class="flex items-center justify-between">
+              <%= form.label :volume, "Volume", class: "text-xs font-medium uppercase tracking-wide text-zinc-500" %>
+              <output data-percent-output-target="output" class="text-sm font-medium text-amber-300"><%= @track.volume %>%</output>
+            </div>
+            <%= form.range_field :volume, min: 0, max: AudioTrack::MAX_MUSIC_VOLUME, step: 1, value: @track.volume,
+                  class: "mt-2 w-full accent-amber-400",
+                  data: { percent_output_target: "input", action: "input->percent-output#update" } %>
+            <div class="mt-2 flex items-center justify-between gap-2">
+              <%= form.submit "Save volume", class: small_button_classes %>
+            </div>
+          <% end %>
+
+          <%= button_to "Remove music", project_music_path(@project), method: :delete,
+                class: "text-xs font-semibold text-zinc-400 hover:text-zinc-200 cursor-pointer" %>
+        </div>
+      <% end %>
+
+      <%= form_with url: upload_project_music_path(@project), multipart: true, class: "border-t border-white/5 pt-4",
+            data: { controller: "auto-submit" } do |form| %>
+        <p class="text-xs text-zinc-500">Or use your own track: MP3, M4A, WAV, OGG or FLAC, up to 40 MB. Make sure you have the rights to it.</p>
+        <label class="mt-2 <%= small_button_classes %>">
+          Upload a track
+          <%= form.file_field :file, accept: "audio/*", class: "sr-only", data: { action: "change->auto-submit#submit" } %>
+        </label>
+      <% end %>
+
+      <div class="border-t border-white/5 pt-4">
+        <% busy = @track && (@track.pending? || @track.processing?) %>
+        <% if busy %>
+          <button type="button" disabled class="<%= button_classes %> w-full">Continue to render</button>
+        <% else %>
+          <%= button_to (@track&.ready? ? "Continue to render" : "Continue without music"), continue_project_music_path(@project),
+                method: :post, class: "#{button_classes} w-full" %>
+        <% end %>
+      </div>
+    </aside>
+  </div>
 </div>

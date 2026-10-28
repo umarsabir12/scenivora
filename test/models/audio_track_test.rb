@@ -27,10 +27,22 @@ class AudioTrackTest < ActiveSupport::TestCase
     assert voice_track(speed: 1.15).valid?
   end
 
-  test "music tracks do not need a voice" do
-    track = @project.audio_tracks.build(kind: "music", speed: 1.0)
+  test "music tracks do not need a voice, but need a title and a volume up to 50%" do
+    track = @project.audio_tracks.build(kind: "music", speed: 1.0, title: "Calm piano")
 
     assert track.valid?
+    track.volume = 80
+    assert_not track.valid?
+    track.title = ""
+    assert_not track.valid?
+  end
+
+  test "a music file must be audio" do
+    track = @project.audio_tracks.build(kind: "music", title: "Notes")
+    track.file.attach(io: StringIO.new("not audio"), filename: "notes.txt", content_type: "text/plain")
+
+    assert_not track.valid?
+    assert track.errors[:file].any?
   end
 
   test "a ready track must have its audio attached" do

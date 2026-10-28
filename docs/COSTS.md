@@ -65,6 +65,14 @@ length, or several hundred scripts with no voice-over.
 - Users pay in app credits (`CREDITS_PER_AI_IMAGE`, placeholder 5). The dollar value of a credit is
   not decided.
 
+## Music, render and publish
+
+- **Music:** free. Tracks come from Wikimedia Commons, and uploads are your own.
+- **Render:** free. ffmpeg runs on this machine. Large videos use local disk under `storage/`.
+- **Captions (SRT):** free. Timings come from measuring the narration parts.
+- **YouTube details:** one text-model call per **Write details** click, about $0.0005 for a
+  5-minute script with `gpt-4o-mini` (estimate; recorded in `ApiUsage` as `metadata`).
+
 ## Free items
 
 - Test suite (`bin/rails test`): mocked, no network calls, no cost.

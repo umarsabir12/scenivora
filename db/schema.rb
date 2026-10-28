@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.0].define(version: 2026_10_26_183118) do
+ActiveRecord::Schema[8.0].define(version: 2026_10_26_191754) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -66,6 +66,13 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_183118) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.datetime "confirmed_at"
+    t.integer "volume", default: 18, null: false
+    t.string "title"
+    t.string "credit"
+    t.string "license"
+    t.string "source_url"
+    t.string "page_url"
+    t.jsonb "timings", default: [], null: false
     t.index ["project_id", "kind"], name: "index_audio_tracks_on_project_id_and_kind", unique: true
     t.index ["project_id"], name: "index_audio_tracks_on_project_id"
   end
@@ -93,6 +100,11 @@ ActiveRecord::Schema[8.0].define(version: 2026_10_26_183118) do
     t.jsonb "settings", default: {}, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.text "render_error"
+    t.string "yt_title"
+    t.text "yt_description"
+    t.string "yt_tags", default: [], null: false, array: true
+    t.string "yt_category"
     t.index ["user_id", "created_at"], name: "index_projects_on_user_id_and_created_at"
     t.index ["user_id"], name: "index_projects_on_user_id"
   end
