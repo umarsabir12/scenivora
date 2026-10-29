@@ -1,6 +1,6 @@
 require "test_helper"
 
-class GenerateScriptJobTest < ActiveJob::TestCase
+class ScriptWriterTest < ActiveSupport::TestCase
   # Stands in for Ai::TextGenerator so no test calls the real provider.
   FakeGenerator = Struct.new(:result, :error) do
     attr_reader :received
@@ -19,7 +19,6 @@ class GenerateScriptJobTest < ActiveJob::TestCase
       tone: "dramatic",
       target_length_minutes: 4
     )
-    @project.update!(settings: { "script_generating" => true })
   end
 
   def generation_result(text: "A gripping hook.\n\nThe turning point.", total_tokens: 1_200, cost_usd: BigDecimal("0.00032"))
@@ -34,7 +33,7 @@ class GenerateScriptJobTest < ActiveJob::TestCase
       with_stubbed_new(Ai::Researcher, researcher) do
         with_stubbed_new(Ai::ResearchGenerator, writer) do
           with_stubbed_new(Ai::TextGenerator, generator) do
-            GenerateScriptJob.perform_now(@project)
+            ScriptWriter.new.write(@project)
           end
         end
       end
@@ -83,13 +82,12 @@ class GenerateScriptJobTest < ActiveJob::TestCase
     end
   end
 
-  test "saves the script as version 1 and marks the project script_ready" do
+  test "saves the script as version 1" do
     perform_with(FakeGenerator.new(generation_result))
 
     script = @project.reload.latest_script
     assert_equal 1, script.version
     assert_equal "A gripping hook.\n\nThe turning point.", script.body
-    assert @project.script_ready?
   end
 
   test "records token usage and estimated cost against the project" do
@@ -108,6 +106,7 @@ class GenerateScriptJobTest < ActiveJob::TestCase
 
     assert_includes generator.received[:system_prompt], "first 15 seconds"
     assert_includes generator.received[:system_prompt], "Plain narration text only"
+    assert_includes generator.received[:system_prompt].squish, "Each paragraph is one shot of the video"
     assert_includes generator.received[:user_prompt], "The hidden engineering of suspension bridges"
     assert_includes generator.received[:user_prompt], "Tone: dramatic"
     assert_includes generator.received[:user_prompt], "4 minutes (about 600 words)"
@@ -123,13 +122,10 @@ class GenerateScriptJobTest < ActiveJob::TestCase
     assert_equal [ 1, 2 ], @project.scripts.map(&:version)
   end
 
-  test "clears the generating flag and keeps the project unchanged when the provider fails" do
-    perform_with(FakeGenerator.new(nil, Ai::TextGenerator::Error.new("timeout")))
+  test "when the provider fails, nothing is saved and the error is raised" do
+    assert_raises(Ai::Error) { perform_with(FakeGenerator.new(nil, Ai::TextGenerator::Error.new("timeout"))) }
 
-    @project.reload
-    assert_not @project.script_generating?
-    assert_nil @project.latest_script
-    assert @project.draft?
+    assert_nil @project.reload.latest_script
     assert_equal 0, @project.api_usages.count
   end
 
@@ -181,7 +177,6 @@ class GenerateScriptJobTest < ActiveJob::TestCase
   test "a rewrite with the same brief reuses the stored research" do
     researcher = FakeResearcher.new
     perform_with(FakeGenerator.new(generation_result), researcher: researcher, writer: FakeWriter.new)
-    @project.reload.update!(settings: @project.settings.merge("script_generating" => true))
 
     perform_with(FakeGenerator.new(generation_result), researcher: researcher, writer: FakeWriter.new(text: "Second draft."))
 
@@ -222,11 +217,9 @@ class GenerateScriptJobTest < ActiveJob::TestCase
     assert @project.settings["research"].present?
   end
 
-  test "clears the generating flag even when an unexpected error escapes" do
-    assert_raises(ActiveRecord::RecordInvalid) do
-      perform_with(FakeGenerator.new(generation_result(text: "")))
-    end
+  test "an empty script is not saved" do
+    assert_raises(ActiveRecord::RecordInvalid) { perform_with(FakeGenerator.new(generation_result(text: ""))) }
 
-    assert_not @project.reload.script_generating?
+    assert_equal 0, @project.reload.api_usages.count
   end
 end

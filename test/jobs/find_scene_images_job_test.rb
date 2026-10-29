@@ -720,6 +720,21 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert @project.scenes.all? { |scene| scene.depiction == "no_face" }
   end
 
+  test "a storyboard is planned and searched before any voice exists, keeping its own scenes" do
+    @track.destroy!
+    @project.scenes.create!(position: 1, text: "HMS Calypso reached Corfu.", start_ms: 0, duration_ms: 4_000)
+    @project.scenes.create!(position: 2, text: "The family sailed for Brindisi.", start_ms: 4_000, duration_ms: 4_000)
+    @project.update!(settings: { "storyboard" => true })
+    planner = FakePlanner.new
+
+    run_job(planner: planner)
+
+    scenes = @project.reload.scenes
+    assert_equal [ "HMS Calypso reached Corfu.", "The family sailed for Brindisi." ], scenes.map(&:text)
+    assert_equal 1, planner.calls
+    assert scenes.all? { |scene| scene.selected_image.present? }
+  end
+
   test "the planner's articles are saved on the project and on each scene" do
     planner = FakePlanner.new(articles: [ "Nikola Tesla", "Smiljan" ], beat_articles: { 1 => [ "Smiljan" ] })
 

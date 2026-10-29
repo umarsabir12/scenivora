@@ -1,6 +1,7 @@
-# Splits the confirmed narration into scenes, plans a search for each one with a single
-# planner call, gathers the pictures of the Wikipedia articles the planner named, then gives each
-# scene its candidates: its own articles' pictures first, keyword search only when those run short. The planner runs only when the script or the
+# Plans a picture search for each scene with a single planner call, gathers the pictures of the
+# Wikipedia articles named, then gives each scene its candidates: its own articles' pictures first,
+# keyword search only when those run short. Storyboard projects ("Create video") already have their
+# scenes, laid out from the script; older projects split the confirmed narration into scenes here. The planner runs only when the script or the
 # narration length has changed, so repeated clicks don't pay for the same plan twice.
 class FindSceneImagesJob < ApplicationJob
   queue_as :default
@@ -31,7 +32,9 @@ class FindSceneImagesJob < ApplicationJob
 
   def perform(project)
     track = project.voice_track
-    raise Ai::Error, "Confirm the voice before finding scene images." unless track&.confirmed?
+    unless project.storyboard? || track&.confirmed?
+      raise Ai::Error, "Confirm the voice before finding scene images."
+    end
 
     @article_images = CachedArticleImages.new
     prepare_scenes(project, track)
@@ -54,7 +57,10 @@ class FindSceneImagesJob < ApplicationJob
 
   private
     # Identifies "this script at this length". Scenes and plans are reused while it stays the same.
+    # A storyboard's scenes come from the script alone.
     def scene_key(project, track)
+      return Digest::SHA256.hexdigest(project.latest_script.digest) if project.storyboard?
+
       Digest::SHA256.hexdigest("#{project.latest_script.digest}:#{track.duration_ms}")
     end
 
@@ -62,7 +68,7 @@ class FindSceneImagesJob < ApplicationJob
       key = scene_key(project, track)
       return if project.settings["scene_key"] == key && project.scenes.exists?
 
-      split_scenes(project, track)
+      split_scenes(project, track) unless project.storyboard?
       return unless plan_scenes(project)
 
       project.update!(settings: project.settings.merge("scene_key" => key))

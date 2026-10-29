@@ -83,6 +83,30 @@ class Project < ApplicationRecord
     !draft?
   end
 
+  # Made with "Create video": the scenes are laid out from the script, before the voice.
+  def storyboard?
+    settings["storyboard"] == true
+  end
+
+  PRODUCTION_STEPS = %w[writing pictures ai_images].freeze
+
+  def production_step
+    settings.dig("production", "step")
+  end
+
+  # True while "Create video" is still researching, writing or finding pictures.
+  def producing?
+    PRODUCTION_STEPS.include?(production_step)
+  end
+
+  # Starts "Create video" (or a rewrite of the whole storyboard). No-op while a run is in progress.
+  def start_production!
+    return if producing?
+
+    update!(status: :draft, settings: settings.merge("production" => { "step" => "writing" }))
+    ProduceVideoJob.perform_later(self)
+  end
+
   def script_generating?
     settings["script_generating"] == true
   end
