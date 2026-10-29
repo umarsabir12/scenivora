@@ -76,6 +76,13 @@ class Ai::DirectorTest < ActiveSupport::TestCase
     assert_empty plan.dropped_articles
   end
 
+  test "estimates about a quarter dollar for a 12-scene video with gpt-5.5" do
+    estimate = Ai::Director.estimated_cost(12)
+
+    assert estimate > 0.2
+    assert estimate < 0.4
+  end
+
   test "an answer without a plan is an error" do
     director = Ai::Director.new(generator: FakeGenerator.new("Sorry, I can't."), titles: FakeTitles.new({}))
 

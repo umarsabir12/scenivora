@@ -25,6 +25,22 @@ module Ai
 
     PROMPT
 
+    # Set OPENAI_DIRECTOR_MODEL=off to plan with the cheap scene planner only.
+    def self.enabled?
+      ENV["OPENAI_DIRECTOR_MODEL"] != "off"
+    end
+
+    # Measured on a 12-scene video with gpt-5.5: $0.26 (28k tokens, 3 searches). Research reads
+    # search results, so input is mostly fixed; reasoning grows with the scene count.
+    def self.estimated_cost(scene_count)
+      model = ENV.fetch("OPENAI_DIRECTOR_MODEL", Ai::ResearchGenerator::DEFAULT_MODEL)
+      rates = Ai::ResearchGenerator::PRICING_PER_MILLION.fetch(model, { input: 0, output: 0 })
+      input_tokens = 18_000 + scene_count * 400
+      output_tokens = 1_500 + scene_count * 250
+      tokens = (input_tokens * rates[:input] + output_tokens * rates[:output]) / 1_000_000
+      (tokens.to_d + 4 * Ai::ResearchGenerator::PRICE_PER_SEARCH).round(4)
+    end
+
     def initialize(generator: Ai::ResearchGenerator.new, titles: Media::WikipediaTitles.new, planner: Ai::ScenePlanner.new)
       @generator = generator
       @titles = titles

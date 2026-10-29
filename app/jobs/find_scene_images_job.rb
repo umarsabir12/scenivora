@@ -63,13 +63,16 @@ class FindSceneImagesJob < ApplicationJob
       end
     end
 
-    # One planner call for the whole project. Returns false if planning failed.
+    # One planning call for the whole project. Returns false if planning failed.
     def plan_scenes(project)
       scenes = project.scenes.order(:position).to_a
-      result = Ai::ScenePlanner.new.call(topic: project.prompt, scenes: scenes)
-      record_usage(project, result)
+      result, facts = plan_with_director(project, scenes)
+      unless result
+        result = Ai::ScenePlanner.new.call(topic: project.prompt, scenes: scenes)
+        record_usage(project, result, "scene_plan")
+      end
       project.update!(settings: project.settings.merge("topic_depiction" => result.topic_depiction,
-                                                       "articles" => result.articles))
+                                                       "articles" => result.articles, "facts" => facts || []))
 
       scenes.each do |scene|
         plan = result.plans.fetch(scene.position)
@@ -82,8 +85,24 @@ class FindSceneImagesJob < ApplicationJob
       false
     end
 
-    def record_usage(project, result)
-      project.api_usages.create!(provider: Ai::TextGenerator::PROVIDER, operation: "scene_plan",
+    # The Director researches the real history and plans when real pictures are wanted. If it fails,
+    # the cheap scene planner plans instead; it also plans alone when every scene will be an AI image.
+    def plan_with_director(project, scenes)
+      return unless Ai::Director.enabled? && project.image_mode != "ai_all"
+
+      plan = Ai::Director.new.plan(topic: project.prompt, scenes: scenes)
+      record_usage(project, plan.result, "director_plan")
+      if plan.dropped_articles.any?
+        Rails.logger.info("Director named articles that don't exist for project #{project.id}: #{plan.dropped_articles.inspect}")
+      end
+      [ plan.result, plan.facts ]
+    rescue Ai::Error => e
+      Rails.logger.warn("Director planning failed for project #{project.id}: #{e.message}; using the scene planner")
+      nil
+    end
+
+    def record_usage(project, result, operation)
+      project.api_usages.create!(provider: Ai::TextGenerator::PROVIDER, operation: operation,
                                  units: result.total_tokens, cost_usd: result.cost_usd)
     end
 

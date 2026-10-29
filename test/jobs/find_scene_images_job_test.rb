@@ -47,6 +47,25 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     end
   end
 
+  # Stands in for the Director: plans like the given planner, with facts, or fails when told to.
+  class FakeDirector
+    attr_reader :calls
+
+    def initialize(planner: FakePlanner.new(articles: [ "Nikola Tesla" ]), error: nil)
+      @planner = planner
+      @error = error
+      @calls = 0
+    end
+
+    def plan(topic:, scenes:)
+      @calls += 1
+      raise @error if @error
+
+      result = @planner.call(topic: topic, scenes: scenes).with(total_tokens: 28_000, cost_usd: BigDecimal("0.26"))
+      Ai::Director::Plan.new(result: result, facts: [ "Tesla was born in Smiljan in 1856." ], searches: 3, dropped_articles: [])
+    end
+  end
+
   # Stands in for the scene planner, so no test makes a paid call. Counts how often it is called.
   class FakePlanner
     attr_reader :calls
@@ -159,7 +178,15 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
   end
 
   def run_job(commons: FakeSearch.new, pixabay: nil, planner: FakePlanner.new, videos: FakeVideoSearch.new, ranker: FakeRanker.new,
-              verifier: FakeVerifier.new, rewriter: FakeRewriter.new, articles: FakeArticles.new)
+              verifier: FakeVerifier.new, rewriter: FakeRewriter.new, articles: FakeArticles.new, director: nil)
+    with_stubbed_method(Ai::Director, :enabled?, -> { !director.nil? }) do
+      with_stubbed_new(Ai::Director, director) do
+        run_services(commons:, pixabay:, planner:, videos:, ranker:, verifier:, rewriter:, articles:)
+      end
+    end
+  end
+
+  def run_services(commons:, pixabay:, planner:, videos:, ranker:, verifier:, rewriter:, articles:)
     with_stubbed_new(Media::CommonsSearch, commons) do
       with_stubbed_new(Media::WikipediaArticleImages, articles) do
         with_stubbed_new(Media::CommonsVideoSearch, videos) do
@@ -215,6 +242,46 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert_equal "Nikola Tesla 1890", first.search_query
     assert_equal "real_person", first.plan["subject_type"]
     assert_equal 700, @project.api_usages.find_by(operation: "scene_plan").units
+  end
+
+  test "the Director researches and plans when real pictures are wanted, and its facts are kept" do
+    planner = FakePlanner.new
+    director = FakeDirector.new
+
+    run_job(planner: planner, director: director)
+
+    @project.reload
+    assert_equal 1, director.calls
+    assert_equal 0, planner.calls
+    assert_equal [ "Tesla was born in Smiljan in 1856." ], @project.settings["facts"]
+    assert_equal [ "Nikola Tesla" ], @project.settings["articles"]
+    usage = @project.api_usages.find_by(operation: "director_plan")
+    assert_equal BigDecimal("0.26"), usage.cost_usd
+    assert_nil @project.api_usages.find_by(operation: "scene_plan")
+    assert @project.scenes.all? { |scene| scene.search_query.present? }
+  end
+
+  test "when the Director fails, the scene planner plans instead" do
+    planner = FakePlanner.new
+    director = FakeDirector.new(error: Ai::Error.new("Research call failed: timeout"))
+
+    run_job(planner: planner, director: director)
+
+    @project.reload
+    assert_equal 1, planner.calls
+    assert_equal [], @project.settings["facts"]
+    assert @project.api_usages.find_by(operation: "scene_plan")
+    assert @project.scenes.all? { |scene| scene.search_error.nil? || scene.search_error != FindSceneImagesJob::PLANNING_FAILED }
+  end
+
+  test "the Director is not paid for when every scene will be an AI image" do
+    @project.update!(settings: @project.settings.merge("image_mode" => "ai_all"))
+    director = FakeDirector.new
+
+    run_job(director: director)
+
+    assert_equal 0, director.calls
+    assert @project.api_usages.find_by(operation: "scene_plan")
   end
 
   test "an unchanged script reuses the existing plan instead of calling the planner again" do

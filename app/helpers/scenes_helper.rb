@@ -28,12 +28,19 @@ module ScenesHelper
     format("%d:%02d", total_seconds / 60, total_seconds % 60)
   end
 
-  # Estimate for the planner call, before it runs. Scenes are about 10 seconds each.
+  # Estimate for the planning call, before it runs: the Director's research when real pictures are
+  # wanted, the scene planner otherwise. Scenes are about 10 seconds each.
   def planner_estimate_label(project, track)
     return "—" unless project.latest_script && track&.duration_ms
 
     scene_count = [ (track.duration_ms / 10_000.0).round, 1 ].max
-    format("$%.4f", Ai::ScenePlanner.estimated_cost(project.latest_script.body, scene_count))
+    estimate =
+      if Ai::Director.enabled? && project.image_mode != "ai_all"
+        Ai::Director.estimated_cost(scene_count)
+      else
+        Ai::ScenePlanner.estimated_cost(project.latest_script.body, scene_count)
+      end
+    format("$%.4f", estimate)
   end
 
   # A still to show for any candidate: the image itself, or a video's poster frame.

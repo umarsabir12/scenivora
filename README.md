@@ -93,6 +93,7 @@ from the real environment. `.env.example` lists every setting.
 | `OPENAI_API_KEY`     | Yes, for AI features | none   | Authenticates every OpenAI request                   |
 | `OPENAI_TEXT_MODEL`  | No       | `gpt-4o-mini` | Model used to write scripts                          |
 | `OPENAI_SPEECH_MODEL`| No       | `tts-1`       | Model used for narration and voice samples           |
+| `OPENAI_DIRECTOR_MODEL` | No    | `gpt-5.5`     | The Director, which researches and plans scene pictures; `off` uses the cheap planner |
 | `OPENAI_IMAGE_MODEL` | No       | `gpt-image-1-mini` | Model used for AI scene images                  |
 | `CREDITS_PER_AI_IMAGE` | No     | `5` (placeholder) | Credits charged per AI image                     |
 | `FFMPEG_BIN`, `FFPROBE_BIN` | No | ffmpeg-full if installed, else `ffmpeg`/`ffprobe` on PATH | Which ffmpeg build to use |
@@ -208,8 +209,13 @@ the next `Script` version, records an `ApiUsage` row, and broadcasts the result 
 
 `FindSceneImagesJob` (real photos first) runs in this order:
 1. Splits the confirmed narration into scenes of about 10 seconds (`NarrationScenes`, no API calls).
-2. One planner call (`Ai::ScenePlanner`) writes search queries per scene, whether it prefers video,
-   and what the viewer should see. It also names up to 6 exact English Wikipedia articles for the
+2. **The Director** (`Ai::Director`, one call with `OPENAI_DIRECTOR_MODEL`, about $0.26) first
+   researches the real history on Wikipedia with OpenAI web search (at most 8 searches, Wikipedia
+   only), then plans every scene. Its facts are saved in `project.settings["facts"]`, and every
+   article title it names is checked against Wikipedia (`Media::WikipediaTitles`, free); titles that
+   don't exist are dropped. If the Director fails, or every scene will be an AI image, the cheap
+   planner (`Ai::ScenePlanner`) plans instead. A plan writes search queries per scene, whether it
+   prefers video, and what the viewer should see. It also names up to 6 exact English Wikipedia articles for the
    topic (saved in `project.settings["articles"]`) and 0-2 per scene (in `scene.plan["articles"]`).
    If planning fails, the scenes ask to retry and nothing is searched.
 3. **Article library** (`Media::ArticleLibrary`, free): fetches the pictures used in each named

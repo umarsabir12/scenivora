@@ -58,6 +58,11 @@ length, or several hundred scripts with no voice-over.
 
 ## Checking pictures
 
+- **Director (research and plan):** one call per project with `gpt-5.5` and OpenAI web search
+  limited to Wikipedia. Measured $0.26 for 12 scenes (28k tokens, 3 searches, 67 s). Prices:
+  $5 per 1M input tokens, $30 per 1M output tokens (reasoning counts as output), $10 per 1,000
+  searches. Compared on the same project: `gpt-5-mini` $0.10, `gpt-4.1` $0.05, but neither planned
+  as well (gpt-4.1 never named the key articles). Not used in "AI images for every scene" mode.
 - **Relevance check:** one text call per project, measured $0.0006 for 14 scenes.
 - **Wikipedia article pictures:** free (no key, no AI); one request per article, up to about 18 per video.
 - **Picture check:** one call per scene with up to 6 small previews (3 before October 2026), estimated
