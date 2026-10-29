@@ -62,6 +62,15 @@ class Media::ArticleLibraryTest < ActiveSupport::TestCase
     assert_equal [ @toddler, @wedding ], library.matching("Philip of Greece as a toddler, before his wedding")
   end
 
+  test "ignores words found in most of the library, such as the subject's name" do
+    portraits = (1..8).map { |i| picture("Prince_Philip_#{i}", description: "Prince Philip visiting a town") }
+    fetcher = FakeFetcher.new({ "Prince Philip, Duke of Edinburgh" => [ *portraits, @toddler, @wedding ] })
+    lib = Media::ArticleLibrary.build([ "Prince Philip, Duke of Edinburgh" ], fetcher: fetcher)
+
+    assert_equal [ @toddler ], lib.matching("Philip as a toddler")
+    assert_equal [], lib.matching("Prince Philip later in life")
+  end
+
   test "is capped" do
     assert_equal 2, library(limit: 2).items.size
   end

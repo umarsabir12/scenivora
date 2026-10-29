@@ -33,22 +33,29 @@ module Ai
        "beats": [
         {
           "beat": <number>,
+          "subject": "<by name: the real person, place, ship, building or event this beat shows>",
+          "articles": ["<0-2 exact English Wikipedia article titles about that subject>"],
           "visual_intent": "<one sentence: what the viewer should see>",
           "subject_type": "real_person" | "real_place" | "historical_event" | "object" | "generic_scene" | "abstract",
           "search_queries": ["<4 queries, from specific to broad; the last is 1-3 words, usually the main name or place>"],
           "ai_fallback_allowed": true | false,
           "prefer": "video" | "image",
-          "depiction": "normal" | "no_face" | "no_figure",
-          "articles": ["<0-2 exact English Wikipedia article titles for this beat's subject>"]
+          "depiction": "normal" | "no_face" | "no_figure"
         }
       ]}
 
       Rules:
-      - Articles: their pictures are searched first, so name the articles about the people, places,
-        ships, buildings and events the video shows. Use the exact English Wikipedia article title.
-        Add the disambiguation in brackets for ships, people and places that share a name, e.g.
-        'HMS Calypso (D61)', 'Prince Philip, Duke of Edinburgh'. Do not invent articles. If unsure
-        one exists, leave it out.
+      - Use what you know of the real history, not only the narration's words. When the narration says
+        "a ship", "his mother" or "the palace", the subject, visual_intent, queries and articles name
+        the real ship, person or place: for Napoleon's exile, "the ship" is HMS Northumberland and
+        "his last home" is Longwood House.
+      - Articles: their pictures are searched first, so name narrow articles about the specific people,
+        places, ships, buildings and events the video shows, not broad ones whose pictures are about
+        other things ("World War II", "History of Greece", "British royal family"). Give most beats
+        1-2 articles: the specific subject of that beat, even when it is also a topic article. Use the
+        exact English Wikipedia article title. Add the disambiguation in brackets for ships, people and
+        places that share a name, e.g. 'HMS Calypso (D61)', 'Prince Philip, Duke of Edinburgh'. Do not
+        invent articles. If unsure one exists, leave it out.
       - Queries must be concrete ("Mullaghmore harbour Sligo", "Westminster Abbey 1979"), never vague ("sad scene").
       - The image search matches every word, so keep queries short and drop abstract words such as
         "symbolism", "chaos", "concept" or "legacy". Example: ["Lahore Resolution 1940", "Minar-e-Pakistan", "Lahore"].

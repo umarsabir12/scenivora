@@ -136,7 +136,8 @@ class Ai::ScenePlannerTest < ActiveSupport::TestCase
                    "Princess Alice of Battenberg", "Prince Andrew of Greece and Denmark" ], result.articles
     assert_equal [ "HMS Calypso (D61)", "Corfu" ], result.plans[1].articles
     assert_equal [], result.plans[2].articles
-    assert_includes generator.calls.first[:system_prompt], "Do not invent articles"
+    assert_includes generator.calls.first[:system_prompt].squish, "Do not invent articles"
+    assert_includes generator.calls.first[:system_prompt].squish, "name narrow articles"
     assert_includes generator.calls.first[:system_prompt], "'HMS Calypso (D61)'"
   end
 
