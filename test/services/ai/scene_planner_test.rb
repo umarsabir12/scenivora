@@ -120,4 +120,31 @@ class Ai::ScenePlannerTest < ActiveSupport::TestCase
     planner, = planner_for({ beats: [] }.to_json)
     assert_equal "normal", planner.call(topic: "Tides", scenes: beats).topic_depiction
   end
+
+  test "reads topic and beat articles, cleaned up and capped" do
+    text = {
+      articles: [ "Prince Philip, Duke of Edinburgh", " HMS Calypso (D61) ", "", "HMS Calypso (D61)",
+                  "Mon Repos, Corfu", "Corfu", "Princess Alice of Battenberg", "Prince Andrew of Greece and Denmark",
+                  "Gordonstoun" ],
+      beats: [ { beat: 1, articles: [ "HMS Calypso (D61)", "Corfu", "Greece" ] }, { beat: 2 } ]
+    }.to_json
+
+    planner, generator = planner_for(text)
+    result = planner.call(topic: "Prince Philip", scenes: beats)
+
+    assert_equal [ "Prince Philip, Duke of Edinburgh", "HMS Calypso (D61)", "Mon Repos, Corfu", "Corfu",
+                   "Princess Alice of Battenberg", "Prince Andrew of Greece and Denmark" ], result.articles
+    assert_equal [ "HMS Calypso (D61)", "Corfu" ], result.plans[1].articles
+    assert_equal [], result.plans[2].articles
+    assert_includes generator.calls.first[:system_prompt], "Do not invent articles"
+    assert_includes generator.calls.first[:system_prompt], "'HMS Calypso (D61)'"
+  end
+
+  test "articles default to empty when the model leaves them out" do
+    planner, = planner_for({ beats: [ { beat: 1, search_queries: [ "Corfu" ] } ] }.to_json)
+    result = planner.call(topic: "Tides", scenes: beats)
+
+    assert_equal [], result.articles
+    assert_equal [], result.plans[1].articles
+  end
 end

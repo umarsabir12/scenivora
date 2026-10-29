@@ -21,11 +21,13 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
   class FakePlanner
     attr_reader :calls
 
-    def initialize(error: nil, plans: nil, queries: nil, topic_depiction: "normal")
+    def initialize(error: nil, plans: nil, queries: nil, topic_depiction: "normal", articles: [], beat_articles: {})
       @error = error
       @plans = plans
       @queries = queries
       @topic_depiction = topic_depiction
+      @articles = articles
+      @beat_articles = beat_articles
       @calls = 0
     end
 
@@ -35,9 +37,11 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
       plans = @plans || scenes.to_h do |scene|
         [ scene.position, Ai::ScenePlanner::Plan.new(position: scene.position, visual_intent: "Scene #{scene.position}",
-          subject_type: "generic_scene", search_queries: @queries || [ "Tesla #{scene.position}" ], ai_fallback_allowed: true) ]
+          subject_type: "generic_scene", search_queries: @queries || [ "Tesla #{scene.position}" ], ai_fallback_allowed: true,
+          articles: @beat_articles.fetch(scene.position, [])) ]
       end
-      Ai::ScenePlanner::Result.new(plans: plans, total_tokens: 700, cost_usd: BigDecimal("0.0001"), topic_depiction: @topic_depiction)
+      Ai::ScenePlanner::Result.new(plans: plans, total_tokens: 700, cost_usd: BigDecimal("0.0001"), topic_depiction: @topic_depiction,
+                                   articles: @articles)
     end
   end
 
@@ -502,6 +506,17 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     @project.reload
     assert_equal "no_face", @project.settings["topic_depiction"]
     assert @project.scenes.all? { |scene| scene.depiction == "no_face" }
+  end
+
+  test "the planner's articles are saved on the project and on each scene" do
+    planner = FakePlanner.new(articles: [ "Nikola Tesla", "Smiljan" ], beat_articles: { 1 => [ "Smiljan" ] })
+
+    run_job(planner: planner)
+
+    @project.reload
+    assert_equal [ "Nikola Tesla", "Smiljan" ], @project.settings["articles"]
+    assert_equal [ "Smiljan" ], @project.scenes.first.plan["articles"]
+    assert_equal [], @project.scenes.second.plan["articles"]
   end
 
   test "in a video about a revered figure, a picture showing faces is never selected" do

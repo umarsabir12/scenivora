@@ -66,7 +66,8 @@ class FindSceneImagesJob < ApplicationJob
       scenes = project.scenes.order(:position).to_a
       result = Ai::ScenePlanner.new.call(topic: project.prompt, scenes: scenes)
       record_usage(project, result)
-      project.update!(settings: project.settings.merge("topic_depiction" => result.topic_depiction))
+      project.update!(settings: project.settings.merge("topic_depiction" => result.topic_depiction,
+                                                       "articles" => result.articles))
 
       scenes.each do |scene|
         plan = result.plans.fetch(scene.position)

@@ -4,20 +4,24 @@ module Ai
   class ScenePlanner
     DEPICTIONS = %w[normal no_face no_figure].freeze
 
-    Plan = Data.define(:position, :visual_intent, :subject_type, :search_queries, :ai_fallback_allowed, :prefer, :depiction) do
-      def initialize(prefer: "image", depiction: "normal", **rest)
+    Plan = Data.define(:position, :visual_intent, :subject_type, :search_queries, :ai_fallback_allowed, :prefer, :depiction,
+                       :articles) do
+      def initialize(prefer: "image", depiction: "normal", articles: [], **rest)
         super
       end
     end
     # topic_depiction: the rule the whole video needs, applied to every scene at least.
-    Result = Data.define(:plans, :total_tokens, :cost_usd, :topic_depiction) do
-      def initialize(topic_depiction: "normal", **rest)
+    # articles: Wikipedia articles about the whole topic; their pictures form the project's library.
+    Result = Data.define(:plans, :total_tokens, :cost_usd, :topic_depiction, :articles) do
+      def initialize(topic_depiction: "normal", articles: [], **rest)
         super
       end
     end
 
     SUBJECT_TYPES = %w[real_person real_place historical_event object generic_scene abstract].freeze
     MAX_QUERIES = 4
+    MAX_TOPIC_ARTICLES = 6
+    MAX_BEAT_ARTICLES = 2
 
     SYSTEM_PROMPT = <<~PROMPT.freeze
       You are the visual director for a documentary-style video. Input: a topic and a narration
@@ -25,6 +29,7 @@ module Ai
 
       Return a JSON object with the video's depiction rule and one entry per beat, in this shape:
       {"topic_depiction": "normal" | "no_face" | "no_figure",
+       "articles": ["<up to 6 exact English Wikipedia article titles about the topic>"],
        "beats": [
         {
           "beat": <number>,
@@ -33,11 +38,17 @@ module Ai
           "search_queries": ["<4 queries, from specific to broad; the last is 1-3 words, usually the main name or place>"],
           "ai_fallback_allowed": true | false,
           "prefer": "video" | "image",
-          "depiction": "normal" | "no_face" | "no_figure"
+          "depiction": "normal" | "no_face" | "no_figure",
+          "articles": ["<0-2 exact English Wikipedia article titles for this beat's subject>"]
         }
       ]}
 
       Rules:
+      - Articles: their pictures are searched first, so name the articles about the people, places,
+        ships, buildings and events the video shows. Use the exact English Wikipedia article title.
+        Add the disambiguation in brackets for ships, people and places that share a name, e.g.
+        'HMS Calypso (D61)', 'Prince Philip, Duke of Edinburgh'. Do not invent articles. If unsure
+        one exists, leave it out.
       - Queries must be concrete ("Mullaghmore harbour Sligo", "Westminster Abbey 1979"), never vague ("sad scene").
       - The image search matches every word, so keep queries short and drop abstract words such as
         "symbolism", "chaos", "concept" or "legacy". Example: ["Lahore Resolution 1940", "Minar-e-Pakistan", "Lahore"].
@@ -66,7 +77,7 @@ module Ai
       model = ENV.fetch("OPENAI_TEXT_MODEL", Ai::TextGenerator::DEFAULT_MODEL)
       rates = Ai::TextGenerator::PRICING_PER_MILLION.fetch(model, { input: 0, output: 0 })
       input_tokens = SYSTEM_PROMPT.length / 4 + script_text.split.size * 4 / 3 + scene_count * 30
-      output_tokens = scene_count * 80
+      output_tokens = scene_count * 95 + 40
       ((input_tokens * rates[:input] + output_tokens * rates[:output]) / 1_000_000).to_d.round(5)
     end
 
@@ -81,7 +92,8 @@ module Ai
 
       data = parse_json(result.text)
       Result.new(plans: plans_from(data, scenes), total_tokens: result.total_tokens, cost_usd: result.cost_usd,
-                 topic_depiction: DEPICTIONS.include?(data["topic_depiction"]) ? data["topic_depiction"] : "normal")
+                 topic_depiction: DEPICTIONS.include?(data["topic_depiction"]) ? data["topic_depiction"] : "normal",
+                 articles: titles(data["articles"], MAX_TOPIC_ARTICLES))
     end
 
     private
@@ -116,8 +128,13 @@ module Ai
           search_queries: Array(beat["search_queries"]).map { |q| q.to_s.strip }.reject(&:empty?).first(MAX_QUERIES),
           ai_fallback_allowed: beat["ai_fallback_allowed"] == true,
           prefer: beat["prefer"] == "video" ? "video" : "image",
-          depiction: DEPICTIONS.include?(beat["depiction"]) ? beat["depiction"] : "normal"
+          depiction: DEPICTIONS.include?(beat["depiction"]) ? beat["depiction"] : "normal",
+          articles: titles(beat["articles"], MAX_BEAT_ARTICLES)
         )
+      end
+
+      def titles(list, limit)
+        Array(list).map { |title| title.to_s.squish }.reject(&:empty?).uniq.first(limit)
       end
   end
 end
