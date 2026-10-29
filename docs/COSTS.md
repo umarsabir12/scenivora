@@ -8,7 +8,9 @@ relying on these numbers. The app's price constants live in code and must match:
 
 ## Short answer
 
-- **One script (5 minutes):** about **$0.0007**, under a tenth of a cent.
+- **One script (5 minutes):** about **$0.30** with research (Wikipedia research about $0.25, then
+  `gpt-5.5` writing from it about $0.05). Rewrites with the same brief reuse the research. With
+  the Director `off`, `gpt-4o-mini` writes from the brief alone for about **$0.0007**.
 - **One voice-over (5 minutes, `tts-1`):** about **$0.07**. This is almost all of the cost of a video.
 - **Running the test suite:** **$0**. Tests never call OpenAI.
 - **Setting up all nine voice samples, once:** about **$0.005**. After that, playing them is free.
@@ -63,6 +65,8 @@ length, or several hundred scripts with no voice-over.
   $5 per 1M input tokens, $30 per 1M output tokens (reasoning counts as output), $10 per 1,000
   searches. Compared on the same project: `gpt-5-mini` $0.10, `gpt-4.1` $0.05, but neither planned
   as well (gpt-4.1 never named the key articles). Not used in "AI images for every scene" mode.
+  When the script was written from research, the plan reads that research and doesn't search,
+  estimated about $0.18 for 12 scenes (to be measured).
 - **Director (storyboard review):** one call per project with up to 12 small previews and low
   reasoning effort. Measured $0.05 for 12 scenes (5,800 tokens, 30 s), plus about $0.001 for each
   swapped picture's check.

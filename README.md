@@ -122,9 +122,10 @@ the page shows "Generating..." or "Starting..." until it starts.
 
 1. **Sign up or sign in.** Password reset emails are not sent through a mail service in
    development. Open `log/development.log` and copy the reset link from the email.
-2. **Dashboard.** Type a brief in "What's your next video about?", pick a tone and length,
-   and click **Write script**. That creates the project and starts the script. Filter the list
-   with All, In progress or Rendered.
+2. **Dashboard.** Type a brief in "What's your next video about?", optionally add instructions
+   ("Focus on the escape"), pick a category, tone and length, and click **Write script**. That
+   creates the project and starts the research and script. Filter the list with All, In progress
+   or Rendered.
 3. **Project page.** The left column holds the script. Edit it freely: changes autosave.
    **Rewrite** creates a new version and keeps the old ones under "Previous versions".
 4. **Voice tab.** Click **Go to Voice** on the project page. The tab has two parts:
@@ -171,7 +172,7 @@ the providers, downloads and ffmpeg are replaced with fakes.
 ### Data model
 
 - `User`: Devise account, `credits_balance` (placeholder, shown in the top bar).
-- `Project`: brief (`prompt`), `tone`, `target_length_minutes`, `status`
+- `Project`: brief (`prompt`), optional `category` and `instructions`, `tone`, `target_length_minutes`, `status`
   (`draft → script_ready → voice_ready → scenes_ready → media_ready → rendering → rendered`),
   and `settings` (JSON). `settings["script_generating"]` is true while a script is being
   written. `settings["ai_voice"]` is true after narration is generated, so the description can
@@ -191,14 +192,27 @@ the providers, downloads and ffmpeg are replaced with fakes.
   the YouTube details (`yt_title`, `yt_description`, `yt_tags`, `yt_category`).
 - `CreditTransaction`: every change to a user's credit balance.
 - `ApiUsage`: one row per paid API call batch (provider, operation, units, estimated cost).
-  Operations: `script`, `voice`, `scene_plan`, `ai_image`, `metadata`.
+  Operations: `research`, `script`, `voice`, `director_plan`, `scene_plan`, `director_review`, `ai_image`, `metadata`.
 
 ### Script generation
 
 `ScriptsController#create` marks the project as generating and enqueues `GenerateScriptJob`.
-The job calls `Ai::TextGenerator` with a fixed system prompt (hook in the first 15 seconds,
-story structure with a turning point, about 150 words per minute, plain narration only), saves
-the next `Script` version, records an `ApiUsage` row, and broadcasts the result over Turbo Streams.
+
+1. **Research first** (`Ai::Researcher`, about $0.25): the strong model searches English Wikipedia
+   for the brief, its category and instructions, and returns up to 20 dated facts, checked article
+   titles, up to 25 showable "visual subjects" (people, places, ships, buildings, documents) and
+   uncertain claims. It is saved in `project.settings["research"]` and reused while the brief,
+   category and instructions stay the same, so **Rewrite** doesn't pay for it again.
+2. **Script from the research** (`OPENAI_SCRIPT_MODEL`, defaulting to the Director's `gpt-5.5`):
+   the usual rules (hook in the first 15 seconds, a turning point, about 150 words per minute,
+   plain narration only), plus: only facts from the research, uncertain items attributed, a
+   visual subject named in every paragraph, and no abstract "legacy" paragraphs.
+3. If research or the strong model fails, or the Director is `off`, `Ai::TextGenerator`
+   (`gpt-4o-mini`) writes from the brief alone, as before.
+
+The job saves the next `Script` version, records `research` and `script` usage, and broadcasts
+the result over Turbo Streams. Later, the Director's scene plan reads the same research (and the
+pictures found in its articles) instead of searching again.
 
 ### Scene images (step 3)
 

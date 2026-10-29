@@ -36,20 +36,35 @@ module Ai
 
     PROMPT
 
+    # Used when the topic was researched before the script: the Director plans from that research
+    # and the pictures it found instead of searching again.
+    RESEARCHED_PROMPT = <<~PROMPT.freeze
+      You are the director of a documentary video and you are responsible for every picture in it
+      being right. The topic has been researched already: plan from the facts, visual subjects and
+      article titles given after the narration, not from memory. The pictures already found in
+      those articles are listed too: where one fits a beat, name its article in that beat's
+      "articles" and describe it in the visual_intent, so the beat can use it.
+
+      Then plan the video as the visual director described below.
+
+    PROMPT
+    MAX_PICTURES_SHOWN = 60
+
     # Set OPENAI_DIRECTOR_MODEL=off to plan with the cheap scene planner only.
     def self.enabled?
       ENV["OPENAI_DIRECTOR_MODEL"] != "off"
     end
 
     # Measured on a 12-scene video with gpt-5.5: $0.26 (28k tokens, 3 searches). Research reads
-    # search results, so input is mostly fixed; reasoning grows with the scene count.
-    def self.estimated_cost(scene_count)
+    # search results, so input is mostly fixed; reasoning grows with the scene count. researched:
+    # the topic was researched before the script, so the plan reads that instead of searching.
+    def self.estimated_cost(scene_count, researched: false)
       model = ENV.fetch("OPENAI_DIRECTOR_MODEL", Ai::ResearchGenerator::DEFAULT_MODEL)
       rates = Ai::ResearchGenerator::PRICING_PER_MILLION.fetch(model, { input: 0, output: 0 })
-      input_tokens = 18_000 + scene_count * 400
+      input_tokens = (researched ? 6_000 : 18_000) + scene_count * 400
       output_tokens = 1_500 + scene_count * 250
       tokens = (input_tokens * rates[:input] + output_tokens * rates[:output]) / 1_000_000
-      (tokens.to_d + 4 * Ai::ResearchGenerator::PRICE_PER_SEARCH).round(4)
+      (tokens.to_d + (researched ? 0 : 4) * Ai::ResearchGenerator::PRICE_PER_SEARCH).round(4)
     end
 
     REVIEW_PROMPT = <<~PROMPT.freeze
@@ -88,16 +103,25 @@ module Ai
       @previews = previews
     end
 
-    # scenes: records with position, text and duration_ms.
-    def plan(topic:, scenes:)
-      response = @generator.call(instructions: RESEARCH_PROMPT + Ai::ScenePlanner::SYSTEM_PROMPT,
-                                 input: Ai::ScenePlanner.user_prompt(topic, scenes),
-                                 domains: DOMAINS, max_searches: MAX_SEARCHES)
+    # scenes: records with position, text and duration_ms. research: the project's stored research
+    # (facts, articles, visual_subjects), when the script was written from it; the Director then
+    # doesn't search. pictures: short descriptions of the pictures found in the research articles.
+    def plan(topic:, scenes:, research: nil, pictures: [])
+      input = Ai::ScenePlanner.user_prompt(topic, scenes)
+      response =
+        if research
+          @generator.call(instructions: RESEARCHED_PROMPT + Ai::ScenePlanner::SYSTEM_PROMPT,
+                          input: input + research_notes(research, pictures))
+        else
+          @generator.call(instructions: RESEARCH_PROMPT + Ai::ScenePlanner::SYSTEM_PROMPT, input: input,
+                          domains: DOMAINS, max_searches: MAX_SEARCHES)
+        end
       data = parse_json(response.text)
       result = @planner.result_from(data, scenes, total_tokens: response.total_tokens, cost_usd: response.cost_usd)
       result, dropped = with_real_articles(result)
+      facts = research ? Array(research["facts"]) : Array(data["facts"])
 
-      Plan.new(result: result, facts: Array(data["facts"]).map { |fact| fact.to_s.squish }.reject(&:empty?).first(MAX_FACTS),
+      Plan.new(result: result, facts: facts.map { |fact| fact.to_s.squish }.reject(&:empty?).first(research ? Ai::Researcher::MAX_FACTS : MAX_FACTS),
                searches: response.searches, dropped_articles: dropped)
     end
 
@@ -121,6 +145,18 @@ module Ai
     end
 
     private
+      def research_notes(research, pictures)
+        subjects = Array(research["visual_subjects"]).map do |subject|
+          "- #{subject["name"]}#{" (article: #{subject["article"]})" if subject["article"]}#{" #{subject["year"]}" if subject["year"]}"
+        end
+        [
+          "\n\nResearch facts:", *Array(research["facts"]).map { |fact| "- #{fact}" },
+          "\nArticles: #{Array(research["articles"]).join("; ")}",
+          "\nVisual subjects:", *subjects,
+          "\nPictures found in those articles:", *(pictures.any? ? pictures.first(MAX_PICTURES_SHOWN).map { |picture| "- #{picture}" } : [ "- none" ])
+        ].join("\n")
+      end
+
       # The answer may carry text or a code fence around the JSON when the model has searched.
       def parse_json(text, required: "beats")
         data = JSON.parse(text[/\{.*\}/m].to_s)

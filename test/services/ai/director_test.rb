@@ -68,6 +68,27 @@ class Ai::DirectorTest < ActiveSupport::TestCase
     assert_includes generator.args[:input], "Beat 1 (10.0 s): The baby left Greece on a ship."
   end
 
+  test "with research, plans from it without searching, and keeps the research facts" do
+    generator = FakeGenerator.new(answer)
+    research = { "facts" => [ "HMS Calypso evacuated the family in December 1922." ], "articles" => [ "HMS Calypso (D61)" ],
+                 "visual_subjects" => [ { "name" => "HMS Calypso", "kind" => "ship", "article" => "HMS Calypso (D61)", "year" => "1922" } ] }
+
+    plan = Ai::Director.new(generator: generator, titles: FakeTitles.new(real_titles))
+                       .plan(topic: "Prince Philip", scenes: scenes, research: research, pictures: [ "HMS Calypso; taken 1919; article: HMS Calypso (D61)" ])
+
+    assert_nil generator.args[:domains]
+    assert_includes generator.args[:instructions], "The topic has been researched already"
+    assert_includes generator.args[:input], "- HMS Calypso evacuated the family in December 1922."
+    assert_includes generator.args[:input], "- HMS Calypso (article: HMS Calypso (D61)) 1922"
+    assert_includes generator.args[:input], "- HMS Calypso; taken 1919; article: HMS Calypso (D61)"
+    assert_equal [ "HMS Calypso evacuated the family in December 1922." ], plan.facts
+    assert_equal [ "HMS Calypso (D61)" ], plan.result.plans[1].articles
+  end
+
+  test "planning from research is estimated cheaper than researching" do
+    assert Ai::Director.estimated_cost(12, researched: true) < Ai::Director.estimated_cost(12)
+  end
+
   test "keeps the titles as given when Wikipedia can't be reached" do
     titles = FakeTitles.new({}, error: Media::Error.new("en.wikipedia.org responded with 503"))
     plan = Ai::Director.new(generator: FakeGenerator.new(answer), titles: titles).plan(topic: "Prince Philip", scenes: scenes)

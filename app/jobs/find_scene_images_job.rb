@@ -16,10 +16,24 @@ class FindSceneImagesJob < ApplicationJob
   MAX_VIDEO_SEARCHES = 3
   PLANNING_FAILED = "Scene planning failed. Create scene again to retry.".freeze
 
+  # Fetches each article's pictures once per run, so the library can be built from the research
+  # before planning and again after it without asking Wikipedia twice.
+  class CachedArticleImages
+    def initialize(fetcher = Media::WikipediaArticleImages.new)
+      @fetcher = fetcher
+      @cache = {}
+    end
+
+    def images(article)
+      @cache.fetch(article) { @cache[article] = @fetcher.images(article) }
+    end
+  end
+
   def perform(project)
     track = project.voice_track
     raise Ai::Error, "Confirm the voice before finding scene images." unless track&.confirmed?
 
+    @article_images = CachedArticleImages.new
     prepare_scenes(project, track)
     # Reload: the association still holds the scenes built before planning added their queries.
     scenes = project.scenes.reload
@@ -91,7 +105,9 @@ class FindSceneImagesJob < ApplicationJob
     def plan_with_director(project, scenes)
       return unless Ai::Director.enabled? && project.image_mode != "ai_all"
 
-      plan = Ai::Director.new.plan(topic: project.prompt, scenes: scenes)
+      research = project.settings["research"].presence
+      pictures = research ? research_pictures(research) : []
+      plan = Ai::Director.new.plan(topic: project.prompt, scenes: scenes, research: research, pictures: pictures)
       record_usage(project, plan.result, "director_plan")
       if plan.dropped_articles.any?
         Rails.logger.info("Director named articles that don't exist for project #{project.id}: #{plan.dropped_articles.inspect}")
@@ -109,8 +125,18 @@ class FindSceneImagesJob < ApplicationJob
 
     # One fetch per article for the whole video; costs nothing but a second per article.
     def build_library(project, scenes)
-      articles = Array(project.settings["articles"]) + scenes.flat_map { |scene| Array(scene.plan["articles"]) }
-      Media::ArticleLibrary.build(articles)
+      articles = Array(project.settings["articles"]) + Array(project.settings.dig("research", "articles")) +
+                 scenes.flat_map { |scene| Array(scene.plan["articles"]) }
+      Media::ArticleLibrary.build(articles, fetcher: @article_images)
+    end
+
+    # What the research articles can show, as short lines for the Director's plan.
+    def research_pictures(research)
+      library = Media::ArticleLibrary.build(Array(research["articles"]), fetcher: @article_images)
+      library.items.map do |item|
+        title = CGI.unescape(item.page_url.to_s[/File:(.+)\z/, 1].to_s).tr("_", " ").sub(/\.\w+\z/, "")
+        [ title, (item.taken_on.presence && "taken #{item.taken_on}"), "article: #{item.source_article}" ].compact.join("; ")
+      end
     end
 
     # use_library: false for the second chance, whose scenes already saw (and rejected) the library.

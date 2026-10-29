@@ -49,7 +49,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
   # Stands in for the Director: plans like the given planner, with facts, or fails when told to.
   class FakeDirector
-    attr_reader :calls, :reviews
+    attr_reader :calls, :reviews, :plans
 
     # decide: scene => Ai::Director::Decision (or nil to say nothing about it); keeps everything by default.
     def initialize(planner: FakePlanner.new(articles: [ "Nikola Tesla" ]), error: nil, decide: nil, review_error: nil)
@@ -59,6 +59,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
       @review_error = review_error
       @calls = 0
       @reviews = []
+      @plans = []
     end
 
     def review(topic:, scenes:, facts:, fixed: [])
@@ -69,8 +70,9 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
       Ai::Director::Review.new(decisions: decisions, total_tokens: 9_000, cost_usd: BigDecimal("0.12"))
     end
 
-    def plan(topic:, scenes:)
+    def plan(topic:, scenes:, research: nil, pictures: [])
       @calls += 1
+      @plans << { research: research, pictures: pictures }
       raise @error if @error
 
       result = @planner.call(topic: topic, scenes: scenes).with(total_tokens: 28_000, cost_usd: BigDecimal("0.26"))
@@ -271,6 +273,31 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert_equal BigDecimal("0.26"), usage.cost_usd
     assert_nil @project.api_usages.find_by(operation: "scene_plan")
     assert @project.scenes.all? { |scene| scene.search_query.present? }
+  end
+
+  test "with stored research, the Director plans from it and is shown the pictures its articles have" do
+    @project.update!(settings: { "research" => { "key" => "k", "facts" => [ "Tesla moved to New York in 1884." ],
+                                                  "articles" => [ "Nikola Tesla" ], "visual_subjects" => [] } })
+    portrait = article_picture("Tesla_portrait_1890", description: "Portrait")
+    articles = FakeArticles.new({ "Nikola Tesla" => [ portrait ] })
+    director = FakeDirector.new
+
+    run_job(director: director, articles: articles)
+
+    plan = director.plans.first
+    assert_equal [ "Tesla moved to New York in 1884." ], plan[:research]["facts"]
+    assert_equal [ "Tesla portrait 1890; article: Nikola Tesla" ], plan[:pictures]
+    assert_equal [ "Nikola Tesla" ], articles.calls, "each article is fetched once, before and after planning"
+    assert_equal "wikipedia_article", @project.reload.scenes.first.images.first.provider
+  end
+
+  test "without stored research, the Director researches itself" do
+    director = FakeDirector.new
+
+    run_job(director: director)
+
+    assert_nil director.plans.first[:research]
+    assert_empty director.plans.first[:pictures]
   end
 
   test "when the Director fails, the scene planner plans instead" do

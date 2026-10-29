@@ -36,7 +36,7 @@ module ScenesHelper
     scene_count = [ (track.duration_ms / 10_000.0).round, 1 ].max
     estimate =
       if Ai::Director.enabled? && project.image_mode != "ai_all"
-        Ai::Director.estimated_cost(scene_count)
+        Ai::Director.estimated_cost(scene_count, researched: project.settings["research"].present?)
       else
         Ai::ScenePlanner.estimated_cost(project.latest_script.body, scene_count)
       end
