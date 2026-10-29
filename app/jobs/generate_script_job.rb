@@ -22,6 +22,9 @@ class GenerateScriptJob < ApplicationJob
   RESEARCH_RULES = <<~PROMPT.freeze
 
     Research rules:
+    - Tell the story the brief asks for. Most of the script stays on that story; background and
+      what came after get a sentence or two, not paragraphs of their own.
+    - Write between the minimum and maximum word counts given. Do not exceed the maximum.
     - Use only the facts in the research below. When the brief disagrees with the research (a date,
       a detail), follow the research. Attribute uncertain items ("according to ...") or leave them out.
     - Every paragraph names at least one concrete visual subject from the research (a person, place,
@@ -30,6 +33,14 @@ class GenerateScriptJob < ApplicationJob
     - No abstract moral or "legacy" paragraphs, no "As we reflect", no "stay to the end", no calls to
       like or subscribe. End on a concrete fact, place or image rather than a moral.
     - Follow the creator's instructions when they are given.
+  PROMPT
+
+  # A script this much longer than its target is shortened once.
+  MAX_LENGTH_RATIO = 1.15
+  SHORTEN_PROMPT = <<~PROMPT.freeze
+    Shorten this narration script to the word count given. Keep the hook, the story's order, the
+    facts and the names of the people, places and things it shows; cut repetition, background and
+    side stories first. Return only the shortened script, as plain paragraphs.
   PROMPT
 
   def perform(project)
@@ -65,10 +76,15 @@ class GenerateScriptJob < ApplicationJob
     end
 
     def write_from_research(project, research)
-      result = Ai::ResearchGenerator.new(model: script_model).call(instructions: SYSTEM_PROMPT + RESEARCH_RULES,
-                                                                   input: research_prompt_for(project, research), effort: "low")
-      Ai::TextGenerator::Result.new(text: result.text, provider: result.provider, model: result.model,
-                                    total_tokens: result.total_tokens, cost_usd: result.cost_usd)
+      writer = Ai::ResearchGenerator.new(model: script_model)
+      results = [ writer.call(instructions: SYSTEM_PROMPT + RESEARCH_RULES, input: research_prompt_for(project, research),
+                              effort: "low") ]
+      if results.first.text.split.size > project.target_word_count * MAX_LENGTH_RATIO
+        results << writer.call(instructions: SHORTEN_PROMPT, effort: "low",
+                               input: "Word count: about #{project.target_word_count}\n\n#{results.first.text}")
+      end
+      Ai::TextGenerator::Result.new(text: results.last.text, provider: results.last.provider, model: results.last.model,
+                                    total_tokens: results.sum(&:total_tokens), cost_usd: results.sum(&:cost_usd))
     rescue Ai::Error => e
       Rails.logger.warn("Script from research failed for project #{project.id}: #{e.message}; writing from the brief")
       nil
@@ -112,7 +128,8 @@ class GenerateScriptJob < ApplicationJob
       subjects = Array(research["visual_subjects"]).map do |subject|
         "- #{subject["name"]} (#{[ subject["kind"], subject["year"] ].compact.join(", ")})"
       end
-      lines = [ user_prompt_for(project) ]
+      words = project.target_word_count
+      lines = [ user_prompt_for(project), "Word count: between #{(words * 0.9).round} and #{(words * 1.1).round} words." ]
       lines << "Category: #{project.category}. #{Project::CATEGORIES[project.category]}" if project.category.present?
       lines << "The creator's instructions: #{project.instructions}" if project.instructions.present?
       lines << "\nResearch facts:\n#{Array(research["facts"]).map { |fact| "- #{fact}" }.join("\n")}"

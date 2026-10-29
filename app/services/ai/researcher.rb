@@ -35,6 +35,8 @@ module Ai
        "uncertain": ["<legends, disputed or single-source claims, saying who claims them>"]}
 
       Rules:
+      - Research the story the brief asks for: most facts are about that story and its moment.
+        Add at most a few facts about what came before or after, as context.
       - Facts only from your research, never from the brief alone: briefs can be wrong.
       - Visual subjects: up to 25 concrete, showable things (HMS Calypso, Mon Repos villa, a
         1922 newspaper), not ideas (exile, courage, legacy).

@@ -63,20 +63,23 @@ class GenerateScriptJobTest < ActiveJob::TestCase
   end
 
   # Stands in for the strong model that writes the script from the research.
+  # texts: what each call returns, in order (the last one repeats).
   class FakeWriter
-    attr_reader :args
+    attr_reader :args, :calls
 
-    def initialize(text: "The Golden Gate Bridge opened in 1937.", error: nil)
-      @text = text
+    def initialize(text: "The Golden Gate Bridge opened in 1937.", texts: nil, error: nil)
+      @texts = texts || [ text ]
       @error = error
+      @calls = []
     end
 
     def call(**args)
       @args = args
+      @calls << args
       raise @error if @error
 
-      Ai::ResearchGenerator::Result.new(text: @text, provider: "openai", model: "gpt-5.5", total_tokens: 3_000,
-                                        cost_usd: BigDecimal("0.05"), searches: 0)
+      Ai::ResearchGenerator::Result.new(text: @texts[[ @calls.size - 1, @texts.size - 1 ].min], provider: "openai",
+                                        model: "gpt-5.5", total_tokens: 3_000, cost_usd: BigDecimal("0.05"), searches: 0)
     end
   end
 
@@ -151,6 +154,28 @@ class GenerateScriptJobTest < ActiveJob::TestCase
     assert_equal [ "Suspension cables are spun from thousands of steel wires." ], @project.settings["research"]["facts"]
     assert_equal({ "research" => BigDecimal("0.2"), "script" => BigDecimal("0.05") },
                  @project.api_usages.pluck(:operation, :cost_usd).to_h)
+  end
+
+  test "asks for the target length, and shortens a script that is much too long once" do
+    long = "word " * 700
+    writer = FakeWriter.new(texts: [ long, "A tight script." ])
+
+    perform_with(FakeGenerator.new(generation_result), researcher: FakeResearcher.new, writer: writer)
+
+    assert_includes writer.calls.first[:input], "Word count: between 540 and 660 words."
+    assert_equal 2, writer.calls.size
+    assert_includes writer.calls.second[:instructions], "Shorten this narration script"
+    assert_includes writer.calls.second[:input], "Word count: about 600"
+    assert_equal "A tight script.", @project.reload.latest_script.body
+    assert_equal BigDecimal("0.1"), @project.api_usages.find_by(operation: "script").cost_usd
+  end
+
+  test "a script within the length is not shortened" do
+    writer = FakeWriter.new(text: "word " * 650)
+
+    perform_with(FakeGenerator.new(generation_result), researcher: FakeResearcher.new, writer: writer)
+
+    assert_equal 1, writer.calls.size
   end
 
   test "a rewrite with the same brief reuses the stored research" do
