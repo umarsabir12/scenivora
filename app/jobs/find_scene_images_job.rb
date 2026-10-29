@@ -296,7 +296,7 @@ class FindSceneImagesJob < ApplicationJob
     # broader forms of them only if the pool is still small. A failed search moves on; the scene only
     # reports an error if every search failed and the library gave nothing either.
     def searched_candidates(scene, planned, found)
-      broader = Media::QueryVariants.for(planned, limit: MAX_SEARCHES_PER_SCENE) - planned
+      broader = Media::QueryVariants.for(planned, limit: MAX_SEARCHES_PER_SCENE, topic: scene.project.prompt) - planned
       results = []
       last_error = nil
 

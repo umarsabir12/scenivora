@@ -305,14 +305,15 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
   end
 
   test "falls back to broader queries when the planner's queries find nothing" do
-    search = PickySearch.new(found: [ "Karachi" ])
+    search = PickySearch.new(found: [ "Karachi harbour" ])
 
-    run_job(commons: search, planner: single_plan([ "Karachi 1876", "historical Karachi harbour" ]))
+    run_job(commons: search, planner: single_plan([ "Karachi harbour 1876", "historical Karachi harbour" ]))
 
     scene = @project.reload.scenes.first
     assert_equal FindSceneImagesJob::POOL_SIZE / 2, scene.images.count
-    assert_includes search.queries, "Karachi"
-    assert_equal "Karachi 1876", search.queries.first
+    assert_equal "Karachi harbour 1876", search.queries.first
+    assert_equal "Karachi harbour", search.queries.last
+    assert search.queries.all? { |query| query.split.size >= 2 }, search.queries.inspect
     assert_nil scene.search_error
   end
 
