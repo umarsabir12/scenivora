@@ -48,6 +48,20 @@ class Ai::ResearchGeneratorTest < ActiveSupport::TestCase
     assert_nil responses.parameters[:reasoning]
   end
 
+  test "without domains it doesn't search, and shows pictures after the text" do
+    responses = FakeResponses.new(response)
+    Ai::ResearchGenerator.new(model: "gpt-5.5", client: FakeClient.new(responses))
+                         .call(instructions: "Review", input: "Storyboard", images: [ "jpeg-1" ], effort: "low")
+
+    assert_nil responses.parameters[:tools]
+    assert_nil responses.parameters[:max_tool_calls]
+    content = responses.parameters[:input].first[:content]
+    assert_equal({ type: "input_text", text: "Storyboard" }, content.first)
+    assert_equal "data:image/jpeg;base64,#{Base64.strict_encode64("jpeg-1")}", content.second[:image_url]
+    assert_equal "low", content.second[:detail]
+    assert_equal({ effort: "low" }, responses.parameters[:reasoning])
+  end
+
   test "an answer without text is an error" do
     client = FakeClient.new(FakeResponses.new({ "output" => [ { "type" => "web_search_call" } ], "usage" => {} }))
 

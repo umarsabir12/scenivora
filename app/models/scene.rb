@@ -43,9 +43,10 @@ class Scene < ApplicationRecord
     media_check == "ai_suggested"
   end
 
-  # The prompt an AI image starts from: the planner's description of what the viewer should see.
+  # The prompt an AI image starts from: the Director's prompt when it wrote one, else the plan's
+  # description of what the viewer should see.
   def suggested_ai_prompt
-    plan["visual_intent"].presence || text
+    plan["ai_prompt"].presence || plan["visual_intent"].presence || text
   end
 
   # Charges the user and queues an AI image. Returns false when one is already being generated.

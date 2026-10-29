@@ -241,6 +241,12 @@ the next `Script` version, records an `ApiUsage` row, and broadcasts the result 
 7. **Second chance** (`Ai::QueryRewriter`, one text call): scenes still without a picture get new
    archive-style queries and are searched (keyword search only, since they already saw the library),
    ranked and checked once more.
+8. **Storyboard review** (`Ai::Director#review`, one call, about $0.05): the Director looks at every
+   scene's picture together (small previews), with its facts, and keeps, swaps (to another
+   candidate, which must still pass the picture check) or rejects each one. For scenes left
+   without a picture it writes an AI image prompt (`scene.plan["ai_prompt"]`), which the AI
+   generate tab starts from. Scenes the user chose or uploaded are never changed. If the review
+   fails, the checked pictures stay.
 
 A picture is used once per video, whichever source it came from.
 

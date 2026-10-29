@@ -1,7 +1,9 @@
+require "base64"
+
 module Ai
-  # A text call that may search the web first, for steps that need real facts rather than the
-  # model's memory (the Director's research). Uses OpenAI's Responses API with its web search tool,
-  # limited to the domains given, so the model can check facts and exact article titles.
+  # The Director's model call, through OpenAI's Responses API. For research it may search the web
+  # first, limited to the domains given, so the model can check facts and exact article titles
+  # rather than rely on its memory. For the storyboard review it looks at pictures instead.
   class ResearchGenerator
     Result = Data.define(:text, :provider, :model, :total_tokens, :cost_usd, :searches)
 
@@ -23,16 +25,15 @@ module Ai
       @client = client
     end
 
-    # domains: where the model may search, e.g. ["en.wikipedia.org"]. max_searches caps the tool calls.
+    # domains: where the model may search, e.g. ["en.wikipedia.org"]; nil means no searching.
+    # max_searches caps the searches. images: JPEG bytes shown at low detail, after the input text.
     # effort: reasoning effort for models that reason (gpt-5 family); ignored by the others.
-    def call(instructions:, input:, domains:, max_searches: 8, effort: "medium")
-      parameters = {
-        model: model,
-        instructions: instructions,
-        input: input,
-        tools: [ { type: "web_search", filters: { allowed_domains: domains } } ],
-        max_tool_calls: max_searches
-      }
+    def call(instructions:, input:, domains: nil, max_searches: 8, images: [], effort: "medium")
+      parameters = { model: model, instructions: instructions, input: input_with(input, images) }
+      if domains
+        parameters[:tools] = [ { type: "web_search", filters: { allowed_domains: domains } } ]
+        parameters[:max_tool_calls] = max_searches
+      end
       parameters[:reasoning] = { effort: effort } if reasoning_model?
 
       build_result(client.responses.create(parameters: parameters))
@@ -45,6 +46,15 @@ module Ai
 
       def client
         @client ||= Ai::OpenaiClient.build(request_timeout: REQUEST_TIMEOUT_SECONDS)
+      end
+
+      def input_with(text, images)
+        return text if images.empty?
+
+        content = [ { type: "input_text", text: text } ] + images.map do |jpeg|
+          { type: "input_image", image_url: "data:image/jpeg;base64,#{Base64.strict_encode64(jpeg)}", detail: "low" }
+        end
+        [ { role: "user", content: content } ]
       end
 
       def reasoning_model?

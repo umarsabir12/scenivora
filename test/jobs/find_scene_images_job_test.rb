@@ -49,12 +49,24 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
   # Stands in for the Director: plans like the given planner, with facts, or fails when told to.
   class FakeDirector
-    attr_reader :calls
+    attr_reader :calls, :reviews
 
-    def initialize(planner: FakePlanner.new(articles: [ "Nikola Tesla" ]), error: nil)
+    # decide: scene => Ai::Director::Decision (or nil to say nothing about it); keeps everything by default.
+    def initialize(planner: FakePlanner.new(articles: [ "Nikola Tesla" ]), error: nil, decide: nil, review_error: nil)
       @planner = planner
       @error = error
+      @decide = decide
+      @review_error = review_error
       @calls = 0
+      @reviews = []
+    end
+
+    def review(topic:, scenes:, facts:, fixed: [])
+      @reviews << { facts: facts, fixed: fixed }
+      raise @review_error if @review_error
+
+      decisions = scenes.to_h { |scene| [ scene.position, @decide&.call(scene) ] }.compact
+      Ai::Director::Review.new(decisions: decisions, total_tokens: 9_000, cost_usd: BigDecimal("0.12"))
     end
 
     def plan(topic:, scenes:)
@@ -282,6 +294,73 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
     assert_equal 0, director.calls
     assert @project.api_usages.find_by(operation: "scene_plan")
+  end
+
+  def decision(action, candidate_id: nil, note: "Wrong era.", ai_prompt: nil)
+    Ai::Director::Decision.new(action: action, candidate_id: candidate_id, note: note, ai_prompt: ai_prompt)
+  end
+
+  test "the Director reviews the storyboard with its facts, and its cost is recorded" do
+    director = FakeDirector.new
+
+    run_job(director: director)
+
+    assert_equal 1, director.reviews.size
+    assert_equal [ "Tesla was born in Smiljan in 1856." ], director.reviews.first[:facts]
+    assert_equal BigDecimal("0.12"), @project.api_usages.find_by(operation: "director_review").cost_usd
+    assert @project.reload.scenes.all? { |scene| scene.media_check == "verified" }
+  end
+
+  test "a picture the Director rejects makes way for an AI image with the Director's prompt" do
+    reject_first = ->(scene) { decision("reject", ai_prompt: "Tesla's birth house in Smiljan, 1850s engraving") if scene.position == 1 }
+
+    run_job(director: FakeDirector.new(decide: reject_first))
+
+    scene = @project.reload.scenes.first
+    assert scene.ai_suggested?
+    assert_nil scene.selected_image
+    assert_equal "Director: Wrong era.", scene.media_note
+    assert_equal "Tesla's birth house in Smiljan, 1850s engraving", scene.suggested_ai_prompt
+    assert_equal "verified", @project.scenes.second.media_check
+  end
+
+  test "a candidate the Director swaps in is selected once it passes the picture check" do
+    swap_first = lambda do |scene|
+      next unless scene.position == 1
+
+      other = scene.images.reject(&:selected?).first
+      decision("swap", candidate_id: other.id, note: "The other photo shows Smiljan.")
+    end
+    commons = PickySearch.new(found: [ "Tesla 1" ])
+
+    run_job(commons: commons, director: FakeDirector.new(decide: swap_first))
+
+    scene = @project.reload.scenes.first
+    assert_equal "verified", scene.media_check
+    assert_equal "Director: The other photo shows Smiljan.", scene.media_note
+    assert_equal "https://img.example/tesla-1-1.jpg", scene.selected_image.image_url
+  end
+
+  test "a swapped-in candidate that fails the picture check leaves the scene to an AI image" do
+    swap_first = ->(scene) { decision("swap", candidate_id: scene.images.reject(&:selected?).first.id) if scene.position == 1 }
+    first_pick = nil
+    verifier = FakeVerifier.new(choose: lambda { |candidates|
+      first_pick ||= candidates.first.id
+      candidates.size == 1 && candidates.first.id != first_pick ? nil : candidates.first.id
+    })
+
+    run_job(commons: PickySearch.new(found: [ "Tesla 1" ]), director: FakeDirector.new(decide: swap_first), verifier: verifier)
+
+    scene = @project.reload.scenes.first
+    assert scene.ai_suggested?
+    assert_match "didn't pass the picture check", scene.media_note
+  end
+
+  test "if the storyboard review fails, the checked pictures stay" do
+    run_job(director: FakeDirector.new(review_error: Ai::Error.new("Research call failed: timeout")))
+
+    assert @project.reload.scenes.all? { |scene| scene.media_check == "verified" }
+    assert_nil @project.api_usages.find_by(operation: "director_review")
   end
 
   test "an unchanged script reuses the existing plan instead of calling the planner again" do
