@@ -23,7 +23,33 @@ module Media
       titles = file_titles(query, limit * CANDIDATE_MULTIPLIER)
       return [] if titles.empty?
 
-      metadata_pages(titles).filter_map { |page| to_result(page) }.first(limit)
+      metadata_pages(titles).filter_map { |page| self.class.result_from(page) }.first(limit)
+    end
+
+    # Shared with WikipediaArticleImages: one Commons file page becomes a result only when it is
+    # a photo under a free licence, so both sources apply the same licence rules and credit.
+    def self.result_from(page, provider: PROVIDER, source_article: nil)
+      info = Array(page["imageinfo"]).first
+      return unless info && PHOTO_TYPES.include?(info["mime"])
+
+      meta = info["extmetadata"] || {}
+      license = meta.dig("LicenseShortName", "value").to_s
+      return unless license.match?(ALLOWED_LICENSE)
+
+      ImageResult.new(
+        provider: provider,
+        image_url: info["thumburl"] || info["url"],
+        page_url: info["descriptionurl"],
+        credit: plain_text(meta.dig("Artist", "value")).presence || "Wikimedia Commons contributor",
+        license: license,
+        source_article: source_article,
+        **CommonsMetadata.details(meta)
+      )
+    end
+
+    # Commons metadata is HTML; keep the readable text only.
+    def self.plain_text(html)
+      ActionController::Base.helpers.strip_tags(html.to_s).squish
     end
 
     private
@@ -37,29 +63,6 @@ module Media
           action: "query", titles: titles.first(MAX_TITLES_PER_REQUEST).join("|"), prop: "imageinfo",
           iiprop: "url|size|mime|extmetadata", iiurlwidth: 1600, format: "json", formatversion: 2)
         Array(data.dig("query", "pages"))
-      end
-
-      def to_result(page)
-        info = Array(page["imageinfo"]).first
-        return unless info && PHOTO_TYPES.include?(info["mime"])
-
-        meta = info["extmetadata"] || {}
-        license = meta.dig("LicenseShortName", "value").to_s
-        return unless license.match?(ALLOWED_LICENSE)
-
-        ImageResult.new(
-          provider: PROVIDER,
-          image_url: info["thumburl"] || info["url"],
-          page_url: info["descriptionurl"],
-          credit: plain_text(meta.dig("Artist", "value")).presence || "Wikimedia Commons contributor",
-          license: license,
-          **CommonsMetadata.details(meta)
-        )
-      end
-
-      # Commons metadata is HTML; keep the readable text only.
-      def plain_text(html)
-        ActionController::Base.helpers.strip_tags(html.to_s).squish
       end
   end
 end

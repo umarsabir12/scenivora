@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_28_193417) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_29_120616) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -127,6 +127,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_28_193417) do
     t.text "description"
     t.string "taken_on"
     t.text "categories"
+    t.string "source_article"
     t.index ["scene_id"], name: "index_scene_images_on_scene_id"
   end
 

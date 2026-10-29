@@ -82,7 +82,8 @@ class SceneImagesController < ApplicationController
         results.reject { |result| known_urls.include?(result.image_url) }.each do |result|
           @scene.images.create!(provider: result.provider, image_url: result.image_url, page_url: result.page_url,
                                 credit: result.credit, license: result.license, description: result.description,
-                                taken_on: result.taken_on, categories: result.categories)
+                                taken_on: result.taken_on, categories: result.categories,
+                                source_article: result.source_article)
         end
       end
     end

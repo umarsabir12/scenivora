@@ -237,7 +237,8 @@ class FindSceneImagesJob < ApplicationJob
         images.each_with_index do |image, index|
           scene.images.create!(provider: image.provider, image_url: image.image_url, page_url: image.page_url,
                                credit: image.credit, license: image.license, description: image.description,
-                               taken_on: image.taken_on, categories: image.categories, selected: videos.empty? && index.zero?)
+                               taken_on: image.taken_on, categories: image.categories, source_article: image.source_article,
+                               selected: videos.empty? && index.zero?)
         end
       end
     end

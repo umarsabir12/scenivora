@@ -1,6 +1,7 @@
 module ScenesHelper
   SOURCE_BADGES = {
     "wikimedia_commons" => [ "Commons", "bg-sky-500/15 text-sky-300" ],
+    "wikipedia_article" => [ "Wikipedia", "bg-sky-500/15 text-sky-300" ],
     "pixabay" => [ "Pixabay", "bg-emerald-500/15 text-emerald-300" ],
     "upload" => [ "Upload", "bg-zinc-700 text-zinc-200" ],
     "ai" => [ "AI", "bg-violet-500/15 text-violet-300" ]
