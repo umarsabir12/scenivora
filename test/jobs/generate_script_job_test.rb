@@ -171,7 +171,7 @@ class GenerateScriptJobTest < ActiveJob::TestCase
   end
 
   test "a script within the length is not shortened" do
-    writer = FakeWriter.new(text: "word " * 650)
+    writer = FakeWriter.new(text: "word " * 655)
 
     perform_with(FakeGenerator.new(generation_result), researcher: FakeResearcher.new, writer: writer)
 

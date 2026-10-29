@@ -8,8 +8,10 @@ relying on these numbers. The app's price constants live in code and must match:
 
 ## Short answer
 
-- **One script (5 minutes):** about **$0.30** with research (Wikipedia research about $0.25, then
-  `gpt-5.5` writing from it about $0.05). Rewrites with the same brief reuse the research. With
+- **One script (6 minutes):** about **$0.60** with research. Measured on "Prince Philip: the baby
+  smuggled out of Greece in an orange box": Wikipedia research $0.48-0.51 (about 61k tokens), then
+  `gpt-5.5` writing from it $0.06-0.10 (a second, shortening call adds about $0.05 when the first
+  draft runs long). Rewrites with the same brief reuse the research. With
   the Director `off`, `gpt-4o-mini` writes from the brief alone for about **$0.0007**.
 - **One voice-over (5 minutes, `tts-1`):** about **$0.07**. This is almost all of the cost of a video.
 - **Running the test suite:** **$0**. Tests never call OpenAI.

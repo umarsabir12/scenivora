@@ -198,7 +198,7 @@ the providers, downloads and ffmpeg are replaced with fakes.
 
 `ScriptsController#create` marks the project as generating and enqueues `GenerateScriptJob`.
 
-1. **Research first** (`Ai::Researcher`, about $0.25): the strong model searches English Wikipedia
+1. **Research first** (`Ai::Researcher`, about $0.50): the strong model searches English Wikipedia
    for the brief, its category and instructions, and returns up to 20 dated facts, checked article
    titles, up to 25 showable "visual subjects" (people, places, ships, buildings, documents) and
    uncertain claims. It is saved in `project.settings["research"]` and reused while the brief,
@@ -206,7 +206,9 @@ the providers, downloads and ffmpeg are replaced with fakes.
 2. **Script from the research** (`OPENAI_SCRIPT_MODEL`, defaulting to the Director's `gpt-5.5`):
    the usual rules (hook in the first 15 seconds, a turning point, about 150 words per minute,
    plain narration only), plus: only facts from the research, uncertain items attributed, a
-   visual subject named in every paragraph, and no abstract "legacy" paragraphs.
+   visual subject named in every paragraph, no abstract "legacy" paragraphs, and the story the
+   brief asks for. The prompt gives a word range (90-110% of the target); a script over 110% is
+   shortened once by the same model.
 3. If research or the strong model fails, or the Director is `off`, `Ai::TextGenerator`
    (`gpt-4o-mini`) writes from the brief alone, as before.
 

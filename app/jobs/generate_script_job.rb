@@ -35,8 +35,8 @@ class GenerateScriptJob < ApplicationJob
     - Follow the creator's instructions when they are given.
   PROMPT
 
-  # A script this much longer than its target is shortened once.
-  MAX_LENGTH_RATIO = 1.15
+  # A script longer than the prompt's maximum (10% over its target) is shortened once.
+  MAX_LENGTH_RATIO = 1.1
   SHORTEN_PROMPT = <<~PROMPT.freeze
     Shorten this narration script to the word count given. Keep the hook, the story's order, the
     facts and the names of the people, places and things it shows; cut repetition, background and
