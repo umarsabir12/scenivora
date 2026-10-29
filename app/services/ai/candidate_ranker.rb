@@ -49,6 +49,7 @@ module Ai
 
       def candidate_details(media)
         parts = [ media.source_title ]
+        parts << "from Wikipedia article: #{media.source_article}" if media.source_article.present?
         parts << "taken: #{media.taken_on}" if media.taken_on.present?
         parts << "description: #{media.description}" if media.description.present?
         parts << "categories: #{media.categories}" if media.categories.present?

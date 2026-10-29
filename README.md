@@ -209,24 +209,34 @@ the next `Script` version, records an `ApiUsage` row, and broadcasts the result 
 `FindSceneImagesJob` (real photos first) runs in this order:
 1. Splits the confirmed narration into scenes of about 10 seconds (`NarrationScenes`, no API calls).
 2. One planner call (`Ai::ScenePlanner`) writes search queries per scene, whether it prefers video,
-   and what the viewer should see. If planning fails, the scenes ask to retry and nothing is searched.
-3. Searches Wikimedia Commons with all of the planner's queries (written the way archives label
-   photos: specific places, machines, people, years) and gathers a pool of up to 12 images per scene;
-   broader fallback queries (`Media::QueryVariants`) are used only if the pool is small. Server errors
-   are retried. The first 2 scenes (the hook) and scenes
+   and what the viewer should see. It also names up to 6 exact English Wikipedia articles for the
+   topic (saved in `project.settings["articles"]`) and 0-2 per scene (in `scene.plan["articles"]`).
+   If planning fails, the scenes ask to retry and nothing is searched.
+3. **Article library** (`Media::ArticleLibrary`, free): fetches the pictures used in each named
+   Wikipedia article once per video (`Media::WikipediaArticleImages`, one call per article, about a
+   second each), keeps free-licence photos only, dedupes them and keeps about 60. Titles that don't
+   exist are skipped with a log line.
+4. Builds each scene's pool of up to 12 images: its own articles' pictures first, then library
+   pictures sharing the most words with what the scene should show. Only when that pool has fewer
+   than 5 does it search Wikimedia Commons with the planner's queries (written the way archives
+   label photos), then broader forms (`Media::QueryVariants`) that always keep the subject's name,
+   the year and at least 2 words. Server errors are retried. The first 2 scenes (the hook) and scenes
    marked `prefer: video` also search Commons video (360p or better, the planner's own queries only,
    and the title must share a real word with the query).
-4. **Relevance check** (`Ai::CandidateRanker`, one text call per project, ~$0.0006): judges every
+5. **Relevance check** (`Ai::CandidateRanker`, one text call per project, ~$0.0006): judges every
    candidate by its title, description, date and categories, removes off-topic ones and orders the rest.
    Rules: a modern photo doesn't show a historical moment (but is right for scenes about today), and for
    a scene about a specific place the candidate's metadata must mention that place.
-5. **Picture check** (`Ai::ImageVerifier`, one call per scene with up to 3 small previews, ~$0.001 per
-   scene): looks at the pictures and keeps one only if it shows the scene's actual subject in the right
+6. **Picture check** (`Ai::ImageVerifier`, one call per scene with up to 6 small previews, ~$0.002 per
+   scene; if that call fails, the first 3 are checked alone): looks at the pictures and keeps one only if it shows the scene's actual subject in the right
    era, without large watermarks or burned-in text. A kept picture is marked **✓ Checked**. If none
    passes, the scene's picture is deselected and the scene is marked **AI image suggested**, so nothing
    unchecked reaches the video. If the check itself fails, the scene is marked for manual review.
-6. **Second chance** (`Ai::QueryRewriter`, one text call): scenes still without a picture get new
-   archive-style queries and are searched, ranked and checked once more.
+7. **Second chance** (`Ai::QueryRewriter`, one text call): scenes still without a picture get new
+   archive-style queries and are searched (keyword search only, since they already saw the library),
+   ranked and checked once more.
+
+A picture is used once per video, whichever source it came from.
 
 Scenes waiting for an AI image can be generated one by one (AI generate tab) or together with
 **Generate all suggested**, which shows the total credits first and only starts if the balance covers

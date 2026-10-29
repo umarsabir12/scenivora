@@ -9,7 +9,10 @@ module Ai
       end
     end
 
-    LETTERS = %w[A B C].freeze
+    # Up to 6 candidates in one call: the right picture is often not among the first 3. If that call
+    # fails, the first 3 are checked on their own, as before.
+    LETTERS = %w[A B C D E F].freeze
+    FALLBACK_SIZE = 3
 
     DEPICTION_RULES = {
       "normal" => "",
@@ -21,7 +24,8 @@ module Ai
 
     SYSTEM_PROMPT = <<~PROMPT.freeze
       You check pictures for one scene of a documentary video. You get the scene's narration, what the
-      viewer should see, and candidate pictures labelled A, B and C with their file titles.
+      viewer should see, and candidate pictures labelled with letters (A to F) with their file titles and, when known, the
+      Wikipedia article they come from.
 
       Pick the picture that shows what this scene is about. Be strict: a viewer should see the picture
       and recognise the moment being narrated. Reject a picture when:
@@ -43,7 +47,7 @@ module Ai
       people by context, clothing, era and the file title. If no picture is right, choose none.
 
       Return only JSON:
-      {"choice": "A" | "B" | "C" | null,
+      {"choice": "<the letter of the picture>" | null,
        "faces": <true if the chosen picture shows any person's face, painted, drawn or photographed>,
        "reason": "<one short sentence>"}
     PROMPT
@@ -68,17 +72,28 @@ module Ai
       end
       raise Ai::Error, "No candidate could be previewed" if shown.empty?
 
-      result = @generator.call(system_prompt: SYSTEM_PROMPT, user_prompt: user_prompt(scene, shown),
-                               temperature: 0, json: true, images: images)
-      data = JSON.parse(result.text)
-      index = LETTERS.index(data["choice"].to_s.strip.upcase) if data.is_a?(Hash)
-      Result.new(choice_id: index && shown[index]&.id, reason: data.is_a?(Hash) ? data["reason"].to_s.first(300) : "",
-                 faces: data.is_a?(Hash) && data["faces"] == true, total_tokens: result.total_tokens, cost_usd: result.cost_usd)
-    rescue JSON::ParserError
-      raise Ai::Error, "Picture check returned invalid JSON"
+      begin
+        ask(scene, shown, images)
+      rescue Ai::Error => e
+        raise if shown.size <= FALLBACK_SIZE
+
+        Rails.logger.warn("Picture check of #{shown.size} candidates failed (#{e.message}); checking the first #{FALLBACK_SIZE}")
+        ask(scene, shown.first(FALLBACK_SIZE), images.first(FALLBACK_SIZE))
+      end
     end
 
     private
+      def ask(scene, shown, images)
+        result = @generator.call(system_prompt: SYSTEM_PROMPT, user_prompt: user_prompt(scene, shown),
+                                 temperature: 0, json: true, images: images)
+        data = JSON.parse(result.text)
+        index = LETTERS.first(shown.size).index(data["choice"].to_s.strip.upcase) if data.is_a?(Hash)
+        Result.new(choice_id: index && shown[index].id, reason: data.is_a?(Hash) ? data["reason"].to_s.first(300) : "",
+                   faces: data.is_a?(Hash) && data["faces"] == true, total_tokens: result.total_tokens, cost_usd: result.cost_usd)
+      rescue JSON::ParserError
+        raise Ai::Error, "Picture check returned invalid JSON"
+      end
+
       def preview(candidate)
         @previews.jpeg(candidate)
       rescue Media::Error, Media::Ffmpeg::Error => e
@@ -89,7 +104,8 @@ module Ai
       def user_prompt(scene, shown)
         lines = shown.each_with_index.map do |candidate, index|
           dated = candidate.taken_on.present? ? " (taken #{candidate.taken_on})" : ""
-          "#{LETTERS[index]}: [#{candidate.media_type}] #{candidate.source_title}#{dated}"
+          article = candidate.source_article.present? ? " (from the Wikipedia article \"#{candidate.source_article}\")" : ""
+          "#{LETTERS[index]}: [#{candidate.media_type}] #{candidate.source_title}#{dated}#{article}"
         end
         "Narration: #{scene.text}\nShould show: #{scene.plan["visual_intent"].presence || scene.text}\n" \
           "#{DEPICTION_RULES[scene.depiction]}\n\n#{lines.join("\n")}"

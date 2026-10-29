@@ -38,6 +38,14 @@ class Ai::CandidateRankerTest < ActiveSupport::TestCase
     assert_includes generator.args[:user_prompt], "#{@cyclone.id} [image] Cyclone Favio 21 February 2007"
   end
 
+  test "names the Wikipedia article a candidate comes from" do
+    @flyer.update!(source_article: "Wright Flyer")
+
+    _result, generator = rank({ scenes: [] }.to_json)
+
+    assert_includes generator.args[:user_prompt], "1903 Wright Flyer first flight | from Wikipedia article: Wright Flyer"
+  end
+
   test "returns the kept ids per scene, ignoring ids that aren't the scene's" do
     result, = rank({ scenes: [ { scene: 1, keep: [ @flyer.id, 999_999, @flyer.id ] } ] }.to_json)
 

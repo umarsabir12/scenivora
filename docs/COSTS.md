@@ -59,8 +59,10 @@ length, or several hundred scripts with no voice-over.
 ## Checking pictures
 
 - **Relevance check:** one text call per project, measured $0.0006 for 14 scenes.
-- **Picture check:** one call per scene with up to 3 small previews, measured $0.001 per scene
-  (about 6,400 tokens). About $0.03 for a 5-minute video.
+- **Wikipedia article pictures:** free (no key, no AI); one request per article, up to about 18 per video.
+- **Picture check:** one call per scene with up to 6 small previews (3 before October 2026), estimated
+  $0.002 per scene, about double the 3-preview check ($0.001, about 6,400 tokens). About $0.05 for a
+  5-minute video.
 - **Second-chance queries:** one text call for the scenes without a picture, plus their re-checks.
 - **Measured on a 10-scene project (Panama Canal):** the whole fetch, including planner, relevance
   check, picture checks and second chance, cost $0.0145 and took about 3.5 minutes.
