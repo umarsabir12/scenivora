@@ -124,8 +124,8 @@ the page shows "Generating..." or "Starting..." until it starts.
    development. Open `log/development.log` and copy the reset link from the email.
 2. **Dashboard.** Type a brief in "What's your next video about?", optionally add instructions
    ("Focus on the escape"), pick a category, tone and length, and click **Create video**. The
-   project opens on its storyboard straight away, which shows the progress (about 4 to 6
-   minutes): researching and writing the script, finding and checking a picture for each scene,
+   project opens on its storyboard straight away, which shows the progress (about 5 to 10
+   minutes; measured 8.5 minutes for a 3-minute video with 21 scenes): researching and writing the script, finding and checking a picture for each scene,
    and starting AI images (up to 8, paid in credits) where no real picture fits. Filter the
    list with All, In progress or Rendered.
 3. **Storyboard.** One card per scene (one short paragraph of narration, one picture). Edit a

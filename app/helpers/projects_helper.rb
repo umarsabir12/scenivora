@@ -62,7 +62,7 @@ module ProjectsHelper
 
   # What "Create video" does and may cost, shown under the button.
   def create_video_note
-    "Researches the topic, writes the script and finds a picture for every scene (about 4 to 6 minutes). " \
+    "Researches the topic, writes the script and finds a picture for every scene (about 5 to 10 minutes). " \
       "Up to #{ProduceVideoJob::MAX_AI_IMAGES} AI images are made where no real picture fits, " \
       "#{pluralize(CreditPricing.ai_image, "credit")} each."
   end
