@@ -115,7 +115,7 @@ Changes to `.env` take effect when `bin/dev` is restarted.
 | jobs    | `bin/jobs`                    | Solid Queue worker (scripts and voices) |
 | css     | `bin/rails tailwindcss:watch` | Rebuilds Tailwind CSS on change         |
 
-Scripts, voices, scene images, music downloads, renders and YouTube details run in background jobs. If the `jobs` process is not running,
+Creating videos (research, script, storyboard, pictures), voices, AI images, music downloads, renders and YouTube details run in background jobs. If the `jobs` process is not running,
 the page shows "Generating..." or "Starting..." until it starts.
 
 ## Using the app
@@ -123,31 +123,28 @@ the page shows "Generating..." or "Starting..." until it starts.
 1. **Sign up or sign in.** Password reset emails are not sent through a mail service in
    development. Open `log/development.log` and copy the reset link from the email.
 2. **Dashboard.** Type a brief in "What's your next video about?", optionally add instructions
-   ("Focus on the escape"), pick a category, tone and length, and click **Write script**. That
-   creates the project and starts the research and script. Filter the list with All, In progress
-   or Rendered.
-3. **Project page.** The left column holds the script. Edit it freely: changes autosave.
-   **Rewrite** creates a new version and keeps the old ones under "Previous versions".
-4. **Voice tab.** Click **Go to Voice** on the project page. The tab has two parts:
-   - **Generated voice** (top): the current narration with its duration and voice name, plus
-     **Regenerate** and **Confirm voice**. Confirming locks in the voice and opens the Scenes step. If the script changes
-     afterwards, the tab asks you to regenerate before you can confirm. Regenerating clears the
-     confirmation.
-   - **Narration voice** (below): pick a voice from the grid, play its sample, set the speed
-     from 0.85x to 1.15x, check the estimated cost, and click **Generate voice**. Generation
-     runs in the background, and progress updates live ("Generating part 2 of 4..."). The Voice
-     tab reloads when it finishes. A failed run shows the error with **Retry**, and the previous
-     narration is kept.
-5. **Scenes.** Click **Create scene**: the narration is split into ~10-second scenes, the planner
-   picks search terms, and free images are found on Wikimedia Commons. Review each scene, swap,
-   upload or generate an AI image (for credits), then **Approve scenes & continue**.
-6. **Music.** Pick a free track from the music library (Wikimedia Commons), or upload your own,
+   ("Focus on the escape"), pick a category, tone and length, and click **Create video**. The
+   project opens on its storyboard straight away, which shows the progress (about 4 to 6
+   minutes): researching and writing the script, finding and checking a picture for each scene,
+   and starting AI images (up to 8, paid in credits) where no real picture fits. Filter the
+   list with All, In progress or Rendered.
+3. **Storyboard.** One card per scene (one short paragraph of narration, one picture). Edit a
+   scene's narration and **Save text**, **Delete scene**, swap, upload or generate an AI image for
+   its picture. **Rewrite storyboard** writes a new script and storyboard for the same brief (the
+   research is reused). When every scene has a picture, **Approve storyboard & choose voice**.
+   Scene times are estimated from the words until the voice is made.
+4. **Voice.** Pick a voice, play its sample, set the speed from 0.85x to 1.15x, check the
+   estimated cost, and click **Generate voice**. The narration is voiced one scene at a time, with
+   live progress ("Generating part 2 of 30..."). **Confirm voice** times every scene from its own
+   part and opens Music. Editing the storyboard afterwards sends the project back to the
+   storyboard, and the voice must be made again.
+5. **Music.** Pick a free track from the music library (Wikimedia Commons), or upload your own,
    and set its volume (default 18%, up to 50%). Music is optional: **Continue without music**
    skips it.
-7. **Render.** Choose whether to burn captions in (on by default), then click **Render video**. The
+6. **Render.** Choose whether to burn captions in (on by default), then click **Render video**. The
    MP4 (1920x1080, H.264, AAC, −14 LUFS) is built on this machine with ffmpeg, with progress shown
    live. A failed re-render keeps the previous video.
-8. **Publish.** Watch the video, download the MP4 and thumbnail, and click **Write details** for an
+7. **Publish.** Watch the video, download the MP4 and thumbnail, and click **Write details** for an
    AI title, description, tags and category. Edit them, **Save details**, then **Copy all details**
    and upload to YouTube yourself. **Download captions (.srt)** gives a caption file to upload in
    YouTube Studio under Subtitles.
@@ -158,7 +155,7 @@ fields and buttons) and in the views.
 ## Tests and checks
 
 ```sh
-bin/rails test        # 293 tests: models, services, jobs, controllers, auth flows
+bin/rails test        # 391 tests: models, services, jobs, controllers, auth flows
 bin/rubocop           # style (rubocop-rails-omakase)
 bin/brakeman          # security scan
 bin/ci                # all of the above, plus setup, importmap audit and seeds (Rails 8.1 local CI)
@@ -173,12 +170,13 @@ the providers, downloads and ffmpeg are replaced with fakes.
 
 - `User`: Devise account, `credits_balance` (placeholder, shown in the top bar).
 - `Project`: brief (`prompt`), optional `category` and `instructions`, `tone`, `target_length_minutes`, `status`
-  (`draft → script_ready → voice_ready → scenes_ready → media_ready → rendering → rendered`),
-  and `settings` (JSON). `settings["script_generating"]` is true while a script is being
-  written. `settings["ai_voice"]` is true after narration is generated, so the description can
-  say "Narration is AI-generated".
-- `Script`: versioned narration text. Autosave edits the latest version in place. Rewrite adds
-  a new version.
+  (`draft → script_ready → scenes_ready → voice_ready → media_ready → rendering → rendered` for
+  storyboard projects; see "Create video" below), and `settings` (JSON):
+  `settings["production"]` holds the Create video step, `settings["storyboard"]` marks a
+  storyboard project, `settings["research"]` the research, and `settings["ai_voice"]` is true
+  after narration is generated, so the description can say "Narration is AI-generated".
+- `Script`: versioned narration text, one paragraph per scene. Storyboard edits update the latest
+  version in place; Rewrite storyboard adds a new version.
 - `AudioTrack`: the voice track for a project (`kind: voice`). Holds the voice name, speed,
   status (`pending → processing → ready | failed`), duration, the error message, the MP3
   attachment (Active Storage), `script_digest` (the fingerprint of the script it was made from), and
@@ -194,9 +192,30 @@ the providers, downloads and ffmpeg are replaced with fakes.
 - `ApiUsage`: one row per paid API call batch (provider, operation, units, estimated cost).
   Operations: `research`, `script`, `voice`, `director_plan`, `scene_plan`, `director_review`, `ai_image`, `metadata`.
 
-### Script generation
+### Create video
 
-`ScriptsController#create` marks the project as generating and enqueues `GenerateScriptJob`.
+`ProjectsController#create` (and **Rewrite storyboard**, `ScenesController#rewrite`) call
+`Project#start_production!`, which enqueues `ProduceVideoJob`. It runs, saving each step in
+`settings["production"]["step"]` (`writing → pictures → ai_images → done`, or `failed`) and
+refreshing the storyboard page:
+
+- `ScriptWriter` writes the script (below), one short paragraph per shot.
+- `StoryboardScenes` lays the paragraphs out as scenes (a paragraph over 45 words is split at
+  sentences), timed from their words at 150 per minute; `settings["storyboard"]` marks the project.
+- `FindSceneImagesJob` plans, finds, checks and reviews a picture for each scene (see below).
+- AI images start for up to 8 "AI image suggested" scenes, hook scenes first, while the user's
+  credits last; a note says how many are left.
+
+Storyboard projects run storyboard (`script_ready`) → approved (`scenes_ready`) → voice confirmed
+(`voice_ready`) → `media_ready` → `rendering` → `rendered`. Editing or deleting a scene
+(`StoryboardScenesController`) rewrites the script from the scenes, estimates the times again,
+unconfirms the voice and returns the project to the storyboard. The voice is generated one
+paragraph (scene) at a time, so confirming it gives each scene its measured time. Projects made
+before the storyboard keep the old order (script → voice → scenes).
+
+### Script
+
+`ScriptWriter`:
 
 1. **Research first** (`Ai::Researcher`, about $0.50): the strong model searches English Wikipedia
    for the brief, its category and instructions, and returns up to 20 dated facts, checked article
@@ -212,9 +231,9 @@ the providers, downloads and ffmpeg are replaced with fakes.
 3. If research or the strong model fails, or the Director is `off`, `Ai::TextGenerator`
    (`gpt-4o-mini`) writes from the brief alone, as before.
 
-The job saves the next `Script` version, records `research` and `script` usage, and broadcasts
-the result over Turbo Streams. Later, the Director's scene plan reads the same research (and the
-pictures found in its articles) instead of searching again.
+It saves the next `Script` version and records `research` and `script` usage. Later, the
+Director's scene plan reads the same research (and the pictures found in its articles) instead
+of searching again.
 
 ### Scene images (step 3)
 
