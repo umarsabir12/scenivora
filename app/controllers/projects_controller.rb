@@ -6,14 +6,14 @@ class ProjectsController < ApplicationController
   def index
     @filter = params[:filter].presence_in(FILTERS)
     @projects = filtered(current_user.projects.order(created_at: :desc))
-    @new_project = current_user.projects.build(tone: "documentary", target_length_minutes: 6)
+    @new_project = current_user.projects.build(tone: "documentary", target_length_minutes: 6, category: "history")
   end
 
   def show
   end
 
   def new
-    @project = current_user.projects.build(tone: "documentary", target_length_minutes: 6)
+    @project = current_user.projects.build(tone: "documentary", target_length_minutes: 6, category: "history")
   end
 
   # Called from the dashboard composer with generate=1, which also starts the script.
@@ -34,7 +34,7 @@ class ProjectsController < ApplicationController
     end
 
     def project_params
-      params.expect(project: %i[prompt tone target_length_minutes])
+      params.expect(project: %i[prompt tone target_length_minutes category instructions])
     end
 
     def filtered(scope)

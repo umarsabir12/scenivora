@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_29_120616) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_29_212857) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -105,6 +105,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_29_120616) do
     t.text "yt_description"
     t.string "yt_tags", default: [], null: false, array: true
     t.string "yt_category"
+    t.string "category"
+    t.text "instructions"
     t.index ["user_id", "created_at"], name: "index_projects_on_user_id_and_created_at"
     t.index ["user_id"], name: "index_projects_on_user_id"
   end

@@ -62,6 +62,10 @@ module ProjectsHelper
     Project::TONES.map { |tone| [ tone.humanize, tone ] }
   end
 
+  def category_options
+    Project::CATEGORIES.keys.map { |category| [ category.humanize, category ] }
+  end
+
   def target_length_options
     Project::TARGET_LENGTH_MINUTES.map { |minutes| [ "#{minutes} minutes", minutes ] }
   end

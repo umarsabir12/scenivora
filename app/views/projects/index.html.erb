@@ -15,7 +15,19 @@
             placeholder: "e.g. The untold story of how a garage hobby became a world-famous company",
             class: "#{field_classes} resize-y" %>
 
+      <details class="group" <%= "open" if @new_project.instructions.present? %>>
+        <summary class="cursor-pointer text-sm text-zinc-400 hover:text-zinc-200">Add instructions (optional)</summary>
+        <%= form.text_area :instructions, rows: 2, maxlength: Project::MAX_INSTRUCTIONS,
+              placeholder: "e.g. Focus on his childhood and the escape. Keep it suspenseful.",
+              class: "#{field_classes} mt-2 resize-y" %>
+      </details>
+
       <div class="flex flex-wrap items-end gap-4">
+        <div>
+          <%= form.label :category, class: "block text-xs font-medium uppercase tracking-wide text-zinc-500" %>
+          <%= form.select :category, category_options, {}, class: "#{field_classes} min-w-40" %>
+        </div>
+
         <div>
           <%= form.label :tone, class: "block text-xs font-medium uppercase tracking-wide text-zinc-500" %>
           <%= form.select :tone, tone_options, {}, class: "#{field_classes} min-w-40" %>

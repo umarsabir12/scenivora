@@ -31,6 +31,8 @@ class ProjectsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_select "select[name='project[tone]']"
     assert_select "select[name='project[target_length_minutes]']"
+    assert_select "select[name='project[category]']"
+    assert_select "textarea[name='project[instructions]']"
   end
 
   test "create saves the project for the current user and opens it" do
@@ -45,6 +47,19 @@ class ProjectsControllerTest < ActionDispatch::IntegrationTest
     project = Project.order(:created_at).last
     assert_redirected_to project_url(project)
     assert project.draft?
+  end
+
+  test "create keeps the category and instructions" do
+    sign_in @user
+
+    post projects_url, params: {
+      project: { prompt: "Prince Philip's escape from Greece", tone: "dramatic", target_length_minutes: 5,
+                 category: "biography", instructions: "Focus on the escape." }
+    }
+
+    project = Project.order(:created_at).last
+    assert_equal "biography", project.category
+    assert_equal "Focus on the escape.", project.instructions
   end
 
   test "create with an invalid brief re-renders the form" do
