@@ -28,12 +28,56 @@ class GenerateScriptJobTest < ActiveJob::TestCase
     )
   end
 
-  def perform_with(generator)
-    original_new = Ai::TextGenerator.method(:new)
-    Ai::TextGenerator.define_singleton_method(:new) { |*| generator }
-    GenerateScriptJob.perform_now(@project)
-  ensure
-    Ai::TextGenerator.define_singleton_method(:new, original_new)
+  # Without a researcher the Director is off, so the script is written from the brief alone.
+  def perform_with(generator, researcher: nil, writer: nil)
+    with_stubbed_method(Ai::Director, :enabled?, -> { !researcher.nil? }) do
+      with_stubbed_new(Ai::Researcher, researcher) do
+        with_stubbed_new(Ai::ResearchGenerator, writer) do
+          with_stubbed_new(Ai::TextGenerator, generator) do
+            GenerateScriptJob.perform_now(@project)
+          end
+        end
+      end
+    end
+  end
+
+  # Stands in for the research step: canned research, or an error. Counts its calls.
+  class FakeResearcher
+    attr_reader :calls
+
+    def initialize(error: nil)
+      @error = error
+      @calls = 0
+    end
+
+    def call(_project)
+      @calls += 1
+      raise @error if @error
+
+      Ai::Researcher::Research.new(
+        facts: [ "Suspension cables are spun from thousands of steel wires." ], articles: [ "Suspension bridge" ],
+        visual_subjects: [ { "name" => "Golden Gate Bridge", "kind" => "building", "article" => "Golden Gate Bridge", "year" => "1937" } ],
+        uncertain: [ "Legend says a worker is sealed in a tower." ], total_tokens: 20_000, cost_usd: BigDecimal("0.2"),
+        searches: 4, dropped_articles: [])
+    end
+  end
+
+  # Stands in for the strong model that writes the script from the research.
+  class FakeWriter
+    attr_reader :args
+
+    def initialize(text: "The Golden Gate Bridge opened in 1937.", error: nil)
+      @text = text
+      @error = error
+    end
+
+    def call(**args)
+      @args = args
+      raise @error if @error
+
+      Ai::ResearchGenerator::Result.new(text: @text, provider: "openai", model: "gpt-5.5", total_tokens: 3_000,
+                                        cost_usd: BigDecimal("0.05"), searches: 0)
+    end
   end
 
   test "saves the script as version 1 and marks the project script_ready" do
@@ -84,6 +128,73 @@ class GenerateScriptJobTest < ActiveJob::TestCase
     assert_nil @project.latest_script
     assert @project.draft?
     assert_equal 0, @project.api_usages.count
+  end
+
+  test "researches first, then writes the script from the facts with the strong model" do
+    @project.update!(category: "science", instructions: "Focus on the cables.")
+    writer = FakeWriter.new
+    fallback = FakeGenerator.new(generation_result)
+
+    perform_with(fallback, researcher: FakeResearcher.new, writer: writer)
+
+    @project.reload
+    assert_equal "The Golden Gate Bridge opened in 1937.", @project.latest_script.body
+    assert_nil fallback.received
+    prompt = writer.args[:input]
+    assert_includes prompt, "- Suspension cables are spun from thousands of steel wires."
+    assert_includes prompt, "- Golden Gate Bridge (building, 1937)"
+    assert_includes prompt, "- Legend says a worker is sealed in a tower."
+    assert_includes prompt, "The creator's instructions: Focus on the cables."
+    assert_includes prompt, "Category: science."
+    assert_includes writer.args[:instructions], "Every paragraph names at least one concrete visual subject"
+    assert_nil writer.args[:domains]
+    assert_equal [ "Suspension cables are spun from thousands of steel wires." ], @project.settings["research"]["facts"]
+    assert_equal({ "research" => BigDecimal("0.2"), "script" => BigDecimal("0.05") },
+                 @project.api_usages.pluck(:operation, :cost_usd).to_h)
+  end
+
+  test "a rewrite with the same brief reuses the stored research" do
+    researcher = FakeResearcher.new
+    perform_with(FakeGenerator.new(generation_result), researcher: researcher, writer: FakeWriter.new)
+    @project.reload.update!(settings: @project.settings.merge("script_generating" => true))
+
+    perform_with(FakeGenerator.new(generation_result), researcher: researcher, writer: FakeWriter.new(text: "Second draft."))
+
+    assert_equal 1, researcher.calls
+    assert_equal "Second draft.", @project.reload.latest_script.body
+    assert_equal 1, @project.api_usages.where(operation: "research").count
+  end
+
+  test "a changed brief researches again" do
+    researcher = FakeResearcher.new
+    perform_with(FakeGenerator.new(generation_result), researcher: researcher, writer: FakeWriter.new)
+    @project.reload.update!(instructions: "Focus on the towers instead.")
+
+    perform_with(FakeGenerator.new(generation_result), researcher: researcher, writer: FakeWriter.new)
+
+    assert_equal 2, researcher.calls
+  end
+
+  test "when research fails, the script is written from the brief as before" do
+    fallback = FakeGenerator.new(generation_result(text: "From the brief."))
+
+    perform_with(fallback, researcher: FakeResearcher.new(error: Ai::Error.new("Research call failed: timeout")), writer: FakeWriter.new)
+
+    @project.reload
+    assert_equal "From the brief.", @project.latest_script.body
+    assert_includes fallback.received[:user_prompt], "The hidden engineering of suspension bridges"
+    assert_nil @project.settings["research"]
+    assert_equal [ "script" ], @project.api_usages.pluck(:operation)
+  end
+
+  test "when the strong model fails, the cheap model writes from the brief and the research is kept" do
+    fallback = FakeGenerator.new(generation_result(text: "From the brief."))
+
+    perform_with(fallback, researcher: FakeResearcher.new, writer: FakeWriter.new(error: Ai::Error.new("Research call failed: 500")))
+
+    @project.reload
+    assert_equal "From the brief.", @project.latest_script.body
+    assert @project.settings["research"].present?
   end
 
   test "clears the generating flag even when an unexpected error escapes" do

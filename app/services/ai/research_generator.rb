@@ -1,9 +1,10 @@
 require "base64"
 
 module Ai
-  # The Director's model call, through OpenAI's Responses API. For research it may search the web
-  # first, limited to the domains given, so the model can check facts and exact article titles
-  # rather than rely on its memory. For the storyboard review it looks at pictures instead.
+  # The strong model's call, through OpenAI's Responses API: used for research, the script written
+  # from it, and the Director. For research it may search the web first, limited to the domains
+  # given, so the model can check facts and exact article titles rather than rely on its memory.
+  # For the storyboard review it looks at pictures instead.
   class ResearchGenerator
     Result = Data.define(:text, :provider, :model, :total_tokens, :cost_usd, :searches)
 

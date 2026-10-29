@@ -1,3 +1,7 @@
+# Writes the narration script. When the Director is on, the topic is researched on Wikipedia first
+# (or the stored research is reused while the brief is unchanged) and a strong model writes the
+# script from those facts, naming things that can be shown. If research or that model fails, the
+# cheap model writes from the brief alone, as before.
 class GenerateScriptJob < ApplicationJob
   queue_as :default
 
@@ -15,6 +19,19 @@ class GenerateScriptJob < ApplicationJob
     - Match the requested tone.
   PROMPT
 
+  RESEARCH_RULES = <<~PROMPT.freeze
+
+    Research rules:
+    - Use only the facts in the research below. When the brief disagrees with the research (a date,
+      a detail), follow the research. Attribute uncertain items ("according to ...") or leave them out.
+    - Every paragraph names at least one concrete visual subject from the research (a person, place,
+      ship, building, object, document or event, with the year when it matters), so every part of
+      the video can be shown.
+    - No abstract moral or "legacy" paragraphs, no "As we reflect", no "stay to the end", no calls to
+      like or subscribe. End on a concrete fact, place or image rather than a moral.
+    - Follow the creator's instructions when they are given.
+  PROMPT
+
   def perform(project)
     error = nil
     generate(project)
@@ -28,10 +45,8 @@ class GenerateScriptJob < ApplicationJob
 
   private
     def generate(project)
-      result = Ai::TextGenerator.new.call(
-        system_prompt: SYSTEM_PROMPT,
-        user_prompt: user_prompt_for(project)
-      )
+      research = research_for(project)
+      result = (research && write_from_research(project, research)) || write_from_brief(project)
 
       project.transaction do
         project.scripts.create!(body: result.text, version: project.next_script_version)
@@ -45,12 +60,65 @@ class GenerateScriptJob < ApplicationJob
       end
     end
 
+    def write_from_brief(project)
+      Ai::TextGenerator.new.call(system_prompt: SYSTEM_PROMPT, user_prompt: user_prompt_for(project))
+    end
+
+    def write_from_research(project, research)
+      result = Ai::ResearchGenerator.new(model: script_model).call(instructions: SYSTEM_PROMPT + RESEARCH_RULES,
+                                                                   input: research_prompt_for(project, research), effort: "low")
+      Ai::TextGenerator::Result.new(text: result.text, provider: result.provider, model: result.model,
+                                    total_tokens: result.total_tokens, cost_usd: result.cost_usd)
+    rescue Ai::Error => e
+      Rails.logger.warn("Script from research failed for project #{project.id}: #{e.message}; writing from the brief")
+      nil
+    end
+
+    def script_model
+      ENV["OPENAI_SCRIPT_MODEL"].presence || ENV.fetch("OPENAI_DIRECTOR_MODEL", Ai::ResearchGenerator::DEFAULT_MODEL)
+    end
+
+    # The stored research while the brief is unchanged, else new research (saved on the project).
+    # nil when the Director is off or research failed.
+    def research_for(project)
+      return unless Ai::Director.enabled?
+
+      key = Ai::Researcher.key_for(project)
+      stored = project.settings["research"]
+      return stored if stored.is_a?(Hash) && stored["key"] == key
+
+      research = Ai::Researcher.new.call(project)
+      project.api_usages.create!(provider: Ai::ResearchGenerator::PROVIDER, operation: "research",
+                                 units: research.total_tokens, cost_usd: research.cost_usd)
+      if research.dropped_articles.any?
+        Rails.logger.info("Research named articles that don't exist for project #{project.id}: #{research.dropped_articles.inspect}")
+      end
+      project.update!(settings: project.settings.merge("research" => research.to_settings(key)))
+      project.settings["research"]
+    rescue Ai::Error => e
+      Rails.logger.warn("Research failed for project #{project.id}: #{e.message}; writing the script from the brief")
+      nil
+    end
+
     def user_prompt_for(project)
       <<~PROMPT
         Brief: #{project.prompt}
         Tone: #{project.tone}
         Target length: #{project.target_length_minutes} minutes (about #{project.target_word_count} words)
       PROMPT
+    end
+
+    def research_prompt_for(project, research)
+      subjects = Array(research["visual_subjects"]).map do |subject|
+        "- #{subject["name"]} (#{[ subject["kind"], subject["year"] ].compact.join(", ")})"
+      end
+      lines = [ user_prompt_for(project) ]
+      lines << "Category: #{project.category}. #{Project::CATEGORIES[project.category]}" if project.category.present?
+      lines << "The creator's instructions: #{project.instructions}" if project.instructions.present?
+      lines << "\nResearch facts:\n#{Array(research["facts"]).map { |fact| "- #{fact}" }.join("\n")}"
+      lines << "\nVisual subjects:\n#{subjects.join("\n")}"
+      lines << "\nUncertain (attribute or leave out):\n#{research["uncertain"].map { |item| "- #{item}" }.join("\n")}" if Array(research["uncertain"]).any?
+      lines.join("\n")
     end
 
     def finish_generation(project, error: nil)
