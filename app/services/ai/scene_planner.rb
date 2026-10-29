@@ -94,21 +94,25 @@ module Ai
 
     # scenes: records with position, text and duration_ms.
     def call(topic:, scenes:)
-      result = @generator.call(system_prompt: SYSTEM_PROMPT, user_prompt: user_prompt(topic, scenes),
+      result = @generator.call(system_prompt: SYSTEM_PROMPT, user_prompt: self.class.user_prompt(topic, scenes),
                                temperature: 0.2, json: true)
 
-      data = parse_json(result.text)
-      Result.new(plans: plans_from(data, scenes), total_tokens: result.total_tokens, cost_usd: result.cost_usd,
+      result_from(parse_json(result.text), scenes, total_tokens: result.total_tokens, cost_usd: result.cost_usd)
+    end
+
+    def self.user_prompt(topic, scenes)
+      beats = scenes.map { |scene| "Beat #{scene.position} (#{(scene.duration_ms / 1000.0).round(1)} s): #{scene.text}" }
+      "Topic: #{topic}\n\n#{beats.join("\n")}"
+    end
+
+    # Shared with the Director, which answers in the same shape.
+    def result_from(data, scenes, total_tokens:, cost_usd:)
+      Result.new(plans: plans_from(data, scenes), total_tokens: total_tokens, cost_usd: cost_usd,
                  topic_depiction: DEPICTIONS.include?(data["topic_depiction"]) ? data["topic_depiction"] : "normal",
                  articles: titles(data["articles"], MAX_TOPIC_ARTICLES))
     end
 
     private
-      def user_prompt(topic, scenes)
-        beats = scenes.map { |scene| "Beat #{scene.position} (#{(scene.duration_ms / 1000.0).round(1)} s): #{scene.text}" }
-        "Topic: #{topic}\n\n#{beats.join("\n")}"
-      end
-
       def parse_json(text)
         data = JSON.parse(text)
         data.is_a?(Hash) ? data : {}

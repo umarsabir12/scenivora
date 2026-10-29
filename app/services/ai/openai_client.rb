@@ -3,10 +3,10 @@ module Ai
   module OpenaiClient
     REQUEST_TIMEOUT_SECONDS = 120
 
-    def self.build
+    def self.build(request_timeout: REQUEST_TIMEOUT_SECONDS)
       OpenAI::Client.new(
         access_token: ENV["OPENAI_API_KEY"].presence || raise(Ai::Error, "OPENAI_API_KEY is not set"),
-        request_timeout: REQUEST_TIMEOUT_SECONDS
+        request_timeout: request_timeout
       )
     end
   end
