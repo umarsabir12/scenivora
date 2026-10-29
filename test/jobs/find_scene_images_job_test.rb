@@ -17,6 +17,36 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     end
   end
 
+  # Records each query, so tests can see whether keyword search ran at all.
+  class CountingSearch < FakeSearch
+    attr_reader :queries
+
+    def initialize(...)
+      super
+      @queries = []
+    end
+
+    def search(query, limit: 3)
+      @queries << query
+      super
+    end
+  end
+
+  # Stands in for Wikipedia: canned pictures per article, none for any other title.
+  class FakeArticles
+    attr_reader :calls
+
+    def initialize(pictures = {})
+      @pictures = pictures
+      @calls = []
+    end
+
+    def images(article)
+      @calls << article
+      @pictures.fetch(article, [])
+    end
+  end
+
   # Stands in for the scene planner, so no test makes a paid call. Counts how often it is called.
   class FakePlanner
     attr_reader :calls
@@ -129,15 +159,17 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
   end
 
   def run_job(commons: FakeSearch.new, pixabay: nil, planner: FakePlanner.new, videos: FakeVideoSearch.new, ranker: FakeRanker.new,
-              verifier: FakeVerifier.new, rewriter: FakeRewriter.new)
+              verifier: FakeVerifier.new, rewriter: FakeRewriter.new, articles: FakeArticles.new)
     with_stubbed_new(Media::CommonsSearch, commons) do
-      with_stubbed_new(Media::CommonsVideoSearch, videos) do
-        with_stubbed_new(Media::PixabaySearch, pixabay || FakeSearch.new(provider: "pixabay")) do
-          with_stubbed_new(Ai::ScenePlanner, planner) do
-            with_stubbed_new(Ai::CandidateRanker, ranker) do
-              with_stubbed_new(Ai::ImageVerifier, verifier) do
-                with_stubbed_new(Ai::QueryRewriter, rewriter) do
-                  FindSceneImagesJob.perform_now(@project)
+      with_stubbed_new(Media::WikipediaArticleImages, articles) do
+        with_stubbed_new(Media::CommonsVideoSearch, videos) do
+          with_stubbed_new(Media::PixabaySearch, pixabay || FakeSearch.new(provider: "pixabay")) do
+            with_stubbed_new(Ai::ScenePlanner, planner) do
+              with_stubbed_new(Ai::CandidateRanker, ranker) do
+                with_stubbed_new(Ai::ImageVerifier, verifier) do
+                  with_stubbed_new(Ai::QueryRewriter, rewriter) do
+                    FindSceneImagesJob.perform_now(@project)
+                  end
                 end
               end
             end
@@ -145,6 +177,12 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
         end
       end
     end
+  end
+
+  def article_picture(name, description: nil)
+    Media::ImageResult.new(provider: "wikipedia_article", image_url: "https://upload.wikimedia.org/#{name}.jpg",
+                           page_url: "https://en.wikipedia.org/wiki/File:#{name}.jpg", credit: "Archive",
+                           license: "Public domain", description: description, source_article: "Nikola Tesla")
   end
 
   # Titled so it matches the fake planner's queries ("Tesla 1", "Partition 4").
@@ -517,6 +555,55 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert_equal [ "Nikola Tesla", "Smiljan" ], @project.settings["articles"]
     assert_equal [ "Smiljan" ], @project.scenes.first.plan["articles"]
     assert_equal [], @project.scenes.second.plan["articles"]
+  end
+
+  test "a scene's own article pictures come first, and keyword search is skipped when they are enough" do
+    own = (1..5).map { |i| article_picture("Smiljan_#{i}") }
+    articles = FakeArticles.new({ "Smiljan" => own, "Nikola Tesla" => [ article_picture("Tesla_portrait") ] })
+    commons = CountingSearch.new
+    planner = FakePlanner.new(articles: [ "Nikola Tesla" ], beat_articles: { 1 => [ "Smiljan" ] })
+
+    run_job(planner: planner, articles: articles, commons: commons)
+
+    scene = @project.reload.scenes.first
+    assert_equal own.map(&:image_url), scene.images.where(media_type: "image").order(:id).limit(5).pluck(:image_url)
+    assert_equal "wikipedia_article", scene.selected_image.provider
+    assert_equal "Nikola Tesla", scene.selected_image.source_article
+    assert_equal [ "Nikola Tesla", "Smiljan" ], articles.calls
+    assert_not commons.queries.include?("Tesla 1")
+  end
+
+  test "library pictures that share words with a scene join its pool, and keyword search fills in when short" do
+    portrait = article_picture("Tesla_portrait", description: "Portrait of Nikola Tesla")
+    commons = CountingSearch.new
+    planner = FakePlanner.new(articles: [ "Nikola Tesla" ])
+
+    run_job(planner: planner, articles: FakeArticles.new({ "Nikola Tesla" => [ portrait ] }), commons: commons)
+
+    scene = @project.reload.scenes.first
+    urls = scene.images.order(:id).pluck(:image_url)
+    assert_equal portrait.image_url, urls.first
+    assert_includes urls, "https://img.example/tesla-1.jpg"
+    assert_includes commons.queries, "Tesla 1"
+  end
+
+  test "a library picture is still used only once per video" do
+    portrait = article_picture("Tesla_portrait", description: "Portrait of Nikola Tesla")
+    planner = FakePlanner.new(articles: [ "Nikola Tesla" ], queries: [ "Tesla portrait" ])
+
+    run_job(planner: planner, articles: FakeArticles.new({ "Nikola Tesla" => [ portrait ] }))
+
+    selected = @project.reload.scenes.filter_map(&:selected_image).map(&:image_url)
+    assert_equal 1, selected.count(portrait.image_url)
+  end
+
+  test "articles are not fetched when every scene uses AI images" do
+    articles = FakeArticles.new
+    @project.update!(settings: @project.settings.merge("image_mode" => "ai_all"))
+
+    run_job(planner: FakePlanner.new(articles: [ "Nikola Tesla" ]), articles: articles)
+
+    assert_empty articles.calls
   end
 
   test "in a video about a revered figure, a picture showing faces is never selected" do

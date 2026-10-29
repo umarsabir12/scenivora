@@ -1,5 +1,6 @@
 # Splits the confirmed narration into scenes, plans a search for each one with a single
-# planner call, then finds free candidate images. The planner runs only when the script or the
+# planner call, gathers the pictures of the Wikipedia articles the planner named, then gives each
+# scene its candidates: its own articles' pictures first, keyword search only when those run short. The planner runs only when the script or the
 # narration length has changed, so repeated clicks don't pay for the same plan twice.
 class FindSceneImagesJob < ApplicationJob
   queue_as :default
@@ -25,6 +26,7 @@ class FindSceneImagesJob < ApplicationJob
     if project.image_mode == "ai_all"
       scenes.each { |scene| suggest_ai(scene, "AI images were chosen for every scene.") }
     else
+      @library = build_library(project, scenes)
       scenes.each { |scene| find_images(scene) }
       rank_candidates(project)
       check_pictures(project)
@@ -85,7 +87,14 @@ class FindSceneImagesJob < ApplicationJob
                                  units: result.total_tokens, cost_usd: result.cost_usd)
     end
 
-    def find_images(scene)
+    # One fetch per article for the whole video; costs nothing but a second per article.
+    def build_library(project, scenes)
+      articles = Array(project.settings["articles"]) + scenes.flat_map { |scene| Array(scene.plan["articles"]) }
+      Media::ArticleLibrary.build(articles)
+    end
+
+    # use_library: false for the second chance, whose scenes already saw (and rejected) the library.
+    def find_images(scene, use_library: true)
       # Without a plan there is nothing to search for. The error was set when planning failed.
       if scene.search_query.blank?
         scene.update!(search_error: "No search terms for this scene. Create scene again to retry.") if scene.search_error.blank?
@@ -95,7 +104,7 @@ class FindSceneImagesJob < ApplicationJob
       videos = wants_video?(scene) ? video_candidates_for(scene) : []
       images =
         begin
-          candidates_for(scene)
+          candidates_for(scene, use_library: use_library)
         rescue Media::Error
           raise if videos.empty?
 
@@ -203,7 +212,7 @@ class FindSceneImagesJob < ApplicationJob
 
         scene.update!(search_query: queries.first, search_error: nil, media_check: nil, media_note: nil,
                       plan: scene.plan.merge("search_queries" => queries))
-        find_images(scene)
+        find_images(scene, use_library: false)
         true
       end
       return if retried.empty?
@@ -264,19 +273,36 @@ class FindSceneImagesJob < ApplicationJob
       (stems.call(title) & stems.call(query)).any?
     end
 
-    # Gathers a pool of candidates from all of the planner's queries (the first hits of one query are
-    # often not the best), then broader forms of them only if the pool is still small. The relevance
-    # check chooses from the pool. A failed search moves on; the scene only reports an error if every
-    # search failed.
-    def candidates_for(scene)
+    # The pool starts with the library: pictures from the scene's own articles, then library pictures
+    # that share words with what the scene should show. Keyword search fills in only when that is
+    # short, because it brings back mostly unrelated files. The relevance check chooses from the pool.
+    def candidates_for(scene, use_library: true)
       planned = [ scene.search_query, *scene.plan["search_queries"] ].compact_blank.uniq { |query| query.downcase }
+      results = use_library ? library_candidates(scene, planned) : []
+      return results if results.size >= MAX_CANDIDATES
+
+      (results + searched_candidates(scene, planned, results.size)).uniq(&:image_url).first(POOL_SIZE)
+    end
+
+    def library_candidates(scene, planned)
+      return [] if @library.nil? || @library.empty?
+
+      own = @library.for_articles(scene.plan["articles"])
+      matched = @library.matching([ scene.plan["visual_intent"], *planned ].join(" "))
+      (own + matched).uniq(&:image_url).first(POOL_SIZE)
+    end
+
+    # Searches all of the planner's queries (the first hits of one query are often not the best), then
+    # broader forms of them only if the pool is still small. A failed search moves on; the scene only
+    # reports an error if every search failed and the library gave nothing either.
+    def searched_candidates(scene, planned, found)
       broader = Media::QueryVariants.for(planned, limit: MAX_SEARCHES_PER_SCENE) - planned
       results = []
       last_error = nil
 
       (planned + broader).first(MAX_SEARCHES_PER_SCENE).each do |query|
-        break if results.size >= POOL_SIZE
-        next if broader.include?(query) && results.size >= MAX_CANDIDATES
+        break if found + results.size >= POOL_SIZE
+        next if broader.include?(query) && found + results.size >= MAX_CANDIDATES
 
         begin
           results = (results + search_sources(query, POOL_SIZE / 2)).uniq(&:image_url)
@@ -284,9 +310,9 @@ class FindSceneImagesJob < ApplicationJob
           last_error = e
         end
       end
-      raise last_error if results.empty? && last_error
+      raise last_error if results.empty? && found.zero? && last_error
 
-      results.first(POOL_SIZE)
+      results
     end
 
     def search_sources(query, limit)
