@@ -26,7 +26,7 @@
 
     <% if track.stale_for?(project.latest_script) %>
       <div class="space-y-3 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4">
-        <p class="text-sm font-medium text-amber-200">Script changed since voice was generated — regenerate voice?</p>
+        <p class="text-sm font-medium text-amber-200">The narration changed since this voice was made. Regenerate the voice?</p>
         <%= link_to "Regenerate", project_voice_path(project), class: secondary_button_classes, data: { turbo_method: :post } %>
       </div>
     <% end %>

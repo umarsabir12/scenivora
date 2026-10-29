@@ -7,13 +7,13 @@ Rails.application.routes.draw do
   }
 
   resources :projects, only: %i[index new create show] do
-    resource :script, only: %i[create update]
     resource :voice, only: %i[show create] do
       post :confirm
     end
     resource :scenes, only: %i[show create] do
       post :approve
       post :generate_suggested
+      post :rewrite
     end
     resource :music, only: %i[show create update destroy], controller: "music" do
       post :upload
@@ -25,6 +25,9 @@ Rails.application.routes.draw do
       get :captions
     end
   end
+
+  # A storyboard scene's narration: edit or delete it.
+  resources :scenes, only: %i[update destroy], controller: "storyboard_scenes"
 
   scope "scenes/:scene_id", as: "scene" do
     resources :images, only: :create, controller: "scene_images" do

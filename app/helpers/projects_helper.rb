@@ -18,7 +18,7 @@ module ProjectsHelper
     "from-violet-900/60 to-zinc-900"
   ].freeze
 
-  WIZARD_STEPS = %w[Script Voice Scenes Music Render Publish].freeze
+  WIZARD_STEPS = %w[Storyboard Voice Music Render Publish].freeze
 
   def status_badge(project, id: nil)
     tag.span(project.status.humanize, id: id,
@@ -32,10 +32,9 @@ module ProjectsHelper
   # Path for a wizard step, or nil when the step is not reachable yet.
   def wizard_step_path(project, step)
     case step
-    when "Script" then project_path(project)
+    when "Storyboard" then project_scenes_path(project)
     when "Voice" then project_voice_path(project) if project.voice_available?
-    when "Scenes" then project_scenes_path(project) if project.voice_track&.confirmed?
-    when "Music" then project_music_path(project) if project.scenes_approved?
+    when "Music" then project_music_path(project) if project.music_available?
     when "Render" then project_render_path(project) if project.media_approved?
     when "Publish" then project_publish_path(project) if project.rendered?
     end
@@ -43,9 +42,8 @@ module ProjectsHelper
 
   def wizard_step_done?(project, step)
     case step
-    when "Script" then project.latest_script.present?
-    when "Voice" then project.voice_track&.confirmed? || false
-    when "Scenes" then project.scenes_approved?
+    when "Storyboard" then project.storyboard_approved?
+    when "Voice" then project.music_available? && project.voice_track&.confirmed? || false
     when "Music" then project.media_approved?
     when "Render" then project.rendered?
     when "Publish" then project.rendered? && project.yt_title.present?
@@ -60,6 +58,13 @@ module ProjectsHelper
 
   def tone_options
     Project::TONES.map { |tone| [ tone.humanize, tone ] }
+  end
+
+  # What "Create video" does and may cost, shown under the button.
+  def create_video_note
+    "Researches the topic, writes the script and finds a picture for every scene (about 4 to 6 minutes). " \
+      "Up to #{ProduceVideoJob::MAX_AI_IMAGES} AI images are made where no real picture fits, " \
+      "#{pluralize(CreditPricing.ai_image, "credit")} each."
   end
 
   def category_options

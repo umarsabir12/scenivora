@@ -84,7 +84,13 @@ class MusicController < ApplicationController
     end
 
     def require_scenes_approved
-      redirect_to project_scenes_path(@project), alert: "Approve the scenes first." unless @project.scenes_approved?
+      return if @project.music_available?
+
+      if @project.storyboard? && @project.storyboard_approved?
+        redirect_to project_voice_path(@project), alert: "Confirm the voice first."
+      else
+        redirect_to project_scenes_path(@project), alert: "Approve the scenes first."
+      end
     end
 
     def commons_file?(url)

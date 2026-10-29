@@ -14,8 +14,38 @@ class VoicesControllerTest < ActionDispatch::IntegrationTest
 
     get project_voice_url(draft)
 
-    assert_redirected_to project_url(draft)
-    assert_equal "Generate a script before choosing a voice.", flash[:alert]
+    assert_redirected_to project_scenes_url(draft)
+    assert_equal "Approve the storyboard before choosing a voice.", flash[:alert]
+  end
+
+  test "a storyboard gets its voice only once the storyboard is approved" do
+    @project.update!(settings: { "storyboard" => true })
+
+    get project_voice_url(@project)
+    assert_redirected_to project_scenes_url(@project)
+
+    @project.scenes_ready!
+    get project_voice_url(@project)
+    assert_response :success
+  end
+
+  test "confirming a storyboard's voice times each scene from its part and opens music" do
+    @project.update!(settings: { "storyboard" => true }, status: :scenes_ready)
+    @project.latest_script.update!(body: "HMS Calypso reached Corfu.\n\nThe family sailed for Brindisi.")
+    @project.scenes.create!(position: 1, text: "HMS Calypso reached Corfu.", start_ms: 0, duration_ms: 2_000)
+    @project.scenes.create!(position: 2, text: "The family sailed for Brindisi.", start_ms: 2_000, duration_ms: 2_400)
+    track = @project.create_voice_track!(kind: "voice", voice_name: "alloy", speed: 1.0, duration_ms: 5_100,
+      script_digest: @project.latest_script.digest,
+      timings: [ { "text" => "HMS Calypso reached Corfu.", "start_ms" => 0, "end_ms" => 2_300 },
+                 { "text" => "The family sailed for Brindisi.", "start_ms" => 2_300, "end_ms" => 5_100 } ])
+    track.file.attach(io: StringIO.new("mp3"), filename: "n.mp3", content_type: "audio/mpeg")
+    track.update!(status: "ready")
+
+    post confirm_project_voice_url(@project)
+
+    assert_redirected_to project_music_url(@project)
+    assert @project.reload.voice_ready?
+    assert_equal [ [ 0, 2_300 ], [ 2_300, 2_800 ] ], @project.scenes.map { |scene| [ scene.start_ms, scene.duration_ms ] }
   end
 
   test "the Voice tab lists every voice with a sample control and a speed slider" do
@@ -81,11 +111,11 @@ class VoicesControllerTest < ActionDispatch::IntegrationTest
     get project_voice_url(@project)
     assert_select "audio[controls]"
     assert_select "p", text: /1:05/
-    assert_select "p", text: /Script changed since voice was generated/, count: 0
+    assert_select "p", text: /The narration changed since this voice was made/, count: 0
 
     @project.latest_script.update!(body: "An edited narration.")
     get project_voice_url(@project)
-    assert_select "p", text: /Script changed since voice was generated — regenerate voice\?/
+    assert_select "p", text: /The narration changed since this voice was made. Regenerate the voice\?/
   end
 
   test "another user's project cannot be voiced" do

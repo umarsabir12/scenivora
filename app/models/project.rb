@@ -70,17 +70,73 @@ class Project < ApplicationRecord
     settings["captions"] != false
   end
 
+  # In a storyboard project the steps run storyboard (script_ready) -> approved (scenes_ready) ->
+  # voice confirmed (voice_ready) -> music (media_ready). Older projects ran script -> voice -> scenes.
+  STORYBOARD_APPROVED_STATUSES = %w[scenes_ready voice_ready media_ready rendering rendered].freeze
+  VOICE_CONFIRMED_STATUSES = %w[voice_ready media_ready rendering rendered].freeze
+
   def scenes_approved?
     SCENES_APPROVED_STATUSES.include?(status)
+  end
+
+  def storyboard_approved?
+    storyboard? ? STORYBOARD_APPROVED_STATUSES.include?(status) : scenes_approved?
+  end
+
+  # The music step opens once the storyboard's voice is confirmed (older projects: once scenes are approved).
+  def music_available?
+    storyboard? ? VOICE_CONFIRMED_STATUSES.include?(status) : scenes_approved?
   end
 
   def media_approved?
     MEDIA_READY_STATUSES.include?(status)
   end
 
-  # Any status past draft has a script, so the Voice step stays reachable in later steps too.
+  # A storyboard gets its voice once approved. In older projects any status past draft has a
+  # script, so the Voice step stays reachable in later steps too.
   def voice_available?
-    !draft?
+    storyboard? ? storyboard_approved? : !draft?
+  end
+
+  # A storyboard's narration is voiced one paragraph (scene) at a time, so each scene takes its part's
+  # measured time. If the parts don't match the scenes one to one (a scene too long for one voice
+  # call), the estimated times are scaled to the voice's length instead.
+  def time_scenes_from_voice!
+    track = voice_track
+    timings = Array(track&.timings)
+    list = scenes.reload.to_a
+    return if list.empty? || track&.duration_ms.to_i.zero?
+
+    transaction do
+      if timings.size == list.size
+        list.zip(timings).each { |scene, timing| scene.update!(start_ms: timing["start_ms"], duration_ms: timing["end_ms"] - timing["start_ms"]) }
+      else
+        scale = track.duration_ms.to_f / list.sum(&:duration_ms)
+        start_ms = 0
+        list.each_with_index do |scene, index|
+          duration = index == list.size - 1 ? track.duration_ms - start_ms : (scene.duration_ms * scale).round
+          scene.update!(start_ms: start_ms, duration_ms: duration)
+          start_ms += duration
+        end
+      end
+    end
+  end
+
+  # After a storyboard edit: the script follows the scenes, scene times are estimated again, and the
+  # voice (now out of date) must be made again, so the project goes back to the storyboard step.
+  def storyboard_changed!
+    texts = scenes.reload.map(&:text)
+    transaction do
+      latest_script.update!(body: StoryboardScenes.script_for(texts))
+      start_ms = 0
+      scenes.each.with_index(1) do |scene, position|
+        duration = StoryboardScenes.estimated_ms(scene.text)
+        scene.update!(position: position, start_ms: start_ms, duration_ms: duration)
+        start_ms += duration
+      end
+      voice_track&.update!(confirmed_at: nil)
+      update!(status: :script_ready) if storyboard_approved?
+    end
   end
 
   # Made with "Create video": the scenes are laid out from the script, before the voice.
@@ -105,18 +161,6 @@ class Project < ApplicationRecord
 
     update!(status: :draft, settings: settings.merge("production" => { "step" => "writing" }))
     ProduceVideoJob.perform_later(self)
-  end
-
-  def script_generating?
-    settings["script_generating"] == true
-  end
-
-  # Marks the project as generating and enqueues the job. No-op if a run is already in progress.
-  def start_script_generation!
-    return if script_generating?
-
-    update!(settings: settings.merge("script_generating" => true))
-    GenerateScriptJob.perform_later(self)
   end
 
   def target_word_count

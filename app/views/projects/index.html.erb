@@ -5,8 +5,6 @@
     <h2 class="text-lg font-semibold">What's your next video about?</h2>
 
     <%= form_with model: @new_project, url: projects_path, class: "mt-4 space-y-4" do |form| %>
-      <%= hidden_field_tag :generate, 1 %>
-
       <% if @new_project.errors.any? %>
         <p class="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"><%= @new_project.errors.full_messages.to_sentence %></p>
       <% end %>
@@ -39,9 +37,10 @@
         </div>
 
         <div class="ml-auto">
-          <%= form.submit "Write script", class: button_classes %>
+          <%= form.submit "Create video", class: button_classes %>
         </div>
       </div>
+      <p class="text-xs text-zinc-500"><%= create_video_note %></p>
     <% end %>
   </section>
 

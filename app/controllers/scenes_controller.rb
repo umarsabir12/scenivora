@@ -1,4 +1,5 @@
-# The Scenes step: splits the confirmed narration into timed scenes and finds free images for each.
+# The Storyboard step: each scene's narration and picture, made by "Create video" and edited here
+# before the voice. (Older projects split their confirmed narration into scenes here instead.)
 class ScenesController < ApplicationController
   before_action :set_project
 
@@ -38,30 +39,54 @@ class ScenesController < ApplicationController
     elsif missing.any?
       redirect_to project_scenes_path(@project, scene: missing.first.id),
         alert: "#{helpers.pluralize(missing.size, "scene")} still need an image."
+    elsif @project.storyboard?
+      @project.scenes_ready! unless @project.storyboard_approved?
+      redirect_to project_voice_path(@project), notice: "Storyboard approved. Next: the voice."
     else
       @project.scenes_ready!
       redirect_to project_music_path(@project), notice: "Scenes approved. Next: music."
     end
   end
 
+  # Writes a new script and storyboard for the same brief (the research is reused).
+  def rewrite
+    if @project.producing?
+      redirect_to project_scenes_path(@project), notice: "The storyboard is already being made."
+    else
+      @project.start_production!
+      redirect_to project_scenes_path(@project), notice: "Writing a new storyboard. This page updates as it goes."
+    end
+  end
+
+  # Finds pictures again for every scene.
   def create
     track = @project.voice_track
 
-    if track.nil? || !track.confirmed?
+    if @project.producing?
+      redirect_to project_scenes_path(@project), notice: "The storyboard is still being made."
+    elsif @project.storyboard?
+      find_images
+    elsif track.nil? || !track.confirmed?
       redirect_to project_voice_path(@project), alert: "Confirm the voice before creating scenes."
     elsif track.stale_for?(@project.latest_script)
       redirect_to project_voice_path(@project), alert: "The script changed since the voice was confirmed. Regenerate and confirm the voice first."
-    elsif @project.settings["scenes_searching"]
-      redirect_to project_scenes_path(@project), notice: "Already finding images."
     else
-      mode = params[:image_mode].presence_in(Project::IMAGE_MODES) || @project.image_mode
-      @project.update!(settings: @project.settings.merge("scenes_searching" => true, "image_mode" => mode))
-      FindSceneImagesJob.perform_later(@project)
-      redirect_to project_scenes_path(@project), notice: "Finding images for each scene. This page refreshes when it's done."
+      find_images
     end
   end
 
   private
+    def find_images
+      if @project.settings["scenes_searching"]
+        redirect_to project_scenes_path(@project), notice: "Already finding images."
+      else
+        mode = params[:image_mode].presence_in(Project::IMAGE_MODES) || @project.image_mode
+        @project.update!(settings: @project.settings.merge("scenes_searching" => true, "image_mode" => mode))
+        FindSceneImagesJob.perform_later(@project)
+        redirect_to project_scenes_path(@project), notice: "Finding images for each scene. This page refreshes when it's done."
+      end
+    end
+
     def set_project
       @project = current_user.projects.find(params[:project_id])
     end

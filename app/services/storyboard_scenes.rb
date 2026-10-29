@@ -19,11 +19,15 @@ class StoryboardScenes
     texts = @text.split(PARAGRAPH_BREAK).map(&:squish).reject(&:empty?).flat_map { |paragraph| pieces(paragraph) }
     start_ms = 0
     texts.each_with_index.map do |text, index|
-      duration = estimated_ms(text)
+      duration = self.class.estimated_ms(text, words_per_minute: @words_per_minute)
       scene = Scene.new(position: index + 1, text: text, start_ms: start_ms, duration_ms: duration)
       start_ms += duration
       scene
     end
+  end
+
+  def self.estimated_ms(text, words_per_minute: Project::WORDS_PER_MINUTE)
+    [ (text.to_s.split.size * 60_000.0 / words_per_minute).round, MIN_DURATION_MS ].max
   end
 
   # Joins scene texts back into a script, one paragraph per scene.
@@ -40,9 +44,5 @@ class StoryboardScenes
         groups.last << " " if groups.last.present?
         groups.last << sentence
       end
-    end
-
-    def estimated_ms(text)
-      [ (text.split.size * 60_000.0 / @words_per_minute).round, MIN_DURATION_MS ].max
     end
 end

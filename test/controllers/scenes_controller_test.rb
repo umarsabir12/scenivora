@@ -17,6 +17,60 @@ class ScenesControllerTest < ActionDispatch::IntegrationTest
     track
   end
 
+  def storyboard!(step: nil)
+    settings = { "storyboard" => true }
+    settings["production"] = { "step" => step } if step
+    @project.update!(settings: settings)
+    @project.scenes.create!(position: 1, text: "HMS Calypso reached Corfu.", start_ms: 0, duration_ms: 2_000)
+  end
+
+  test "while the video is being made, the storyboard shows its progress" do
+    storyboard!(step: "pictures")
+
+    get project_scenes_url(@project)
+
+    assert_response :success
+    assert_select "h2", text: "Creating your video"
+    assert_select "li", text: /Researching the topic and writing the script \(done\)/
+    assert_select "li", text: /Finding and checking a picture for each scene \(current\)/
+    assert_select "textarea", count: 0
+  end
+
+  test "a failed run offers to try again" do
+    storyboard!(step: "failed")
+    @project.update!(settings: @project.settings.merge("production" => { "step" => "failed", "error" => ProduceVideoJob::FAILED }))
+
+    get project_scenes_url(@project)
+
+    assert_select "[role=alert]", text: /Creating the video failed/
+    assert_select "form[action=?]", rewrite_project_scenes_path(@project)
+  end
+
+  test "a ready storyboard has editable narration, a rewrite button and approve leads to the voice" do
+    scene = storyboard!(step: "done")
+
+    get project_scenes_url(@project)
+
+    assert_select "textarea[name='scene[text]']", text: "HMS Calypso reached Corfu."
+    assert_select "form[action=?]", rewrite_project_scenes_path(@project)
+
+    scene.images.create!(provider: "wikipedia_article", image_url: "https://upload.wikimedia.org/c.jpg", credit: "x",
+                         license: "Public domain", selected: true)
+    post approve_project_scenes_url(@project)
+
+    assert_redirected_to project_voice_url(@project)
+    assert @project.reload.scenes_ready?
+  end
+
+  test "rewrite starts a new run" do
+    storyboard!(step: "done")
+
+    assert_enqueued_with(job: ProduceVideoJob) { post rewrite_project_scenes_url(@project) }
+
+    assert @project.reload.producing?
+    assert_redirected_to project_scenes_url(@project)
+  end
+
   test "before the voice is confirmed the create button is not shown" do
     get project_scenes_url(@project)
 

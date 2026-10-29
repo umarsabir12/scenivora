@@ -45,8 +45,20 @@ class ProjectsControllerTest < ActionDispatch::IntegrationTest
     end
 
     project = Project.order(:created_at).last
-    assert_redirected_to project_url(project)
+    assert_redirected_to project_scenes_url(project)
     assert project.draft?
+  end
+
+  test "create starts making the video and opens its storyboard" do
+    sign_in @user
+
+    assert_enqueued_with(job: ProduceVideoJob) do
+      post projects_url, params: { project: { prompt: "How lighthouses guided sailors", tone: "documentary", target_length_minutes: 4 } }
+    end
+
+    project = Project.order(:created_at).last
+    assert project.producing?
+    assert_redirected_to project_scenes_url(project)
   end
 
   test "create keeps the category and instructions" do
@@ -72,15 +84,12 @@ class ProjectsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_entity
   end
 
-  test "show renders the wizard with only Script active" do
+  test "a project opens on its storyboard" do
     sign_in @user
 
     get project_url(@project)
 
-    assert_response :success
-    assert_select "li[aria-current='step']", text: /Script/
-    assert_select "li[aria-disabled='true']", count: 5
-    assert_select "#script_panel"
+    assert_redirected_to project_scenes_url(@project)
   end
 
   test "show returns not found for another user's project" do

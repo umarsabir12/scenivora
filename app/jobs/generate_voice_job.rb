@@ -18,7 +18,9 @@ class GenerateVoiceJob < ApplicationJob
     duration_ms, timings = attach_joined_audio(track, parts)
 
     track.update!(status: :ready, duration_ms: duration_ms, timings: timings)
-    project.update!(status: :voice_ready, settings: project.settings.merge("ai_voice" => true))
+    # A storyboard's voice counts once the user confirms it; older projects moved on here.
+    status = project.storyboard? ? project.status : :voice_ready
+    project.update!(status: status, settings: project.settings.merge("ai_voice" => true))
     record_usage(project, parts)
     refresh(track)
   rescue StandardError => e

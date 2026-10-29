@@ -9,20 +9,23 @@ class ProjectsController < ApplicationController
     @new_project = current_user.projects.build(tone: "documentary", target_length_minutes: 6, category: "history")
   end
 
+  # A project opens on its storyboard.
   def show
+    redirect_to project_scenes_path(@project)
   end
 
   def new
     @project = current_user.projects.build(tone: "documentary", target_length_minutes: 6, category: "history")
   end
 
-  # Called from the dashboard composer with generate=1, which also starts the script.
+  # "Create video": saves the brief and starts research, script, scenes and pictures, then opens
+  # the storyboard, which shows the progress.
   def create
     @project = current_user.projects.build(project_params)
 
     if @project.save
-      @project.start_script_generation! if params[:generate].present?
-      redirect_to @project, notice: "Project created."
+      @project.start_production!
+      redirect_to project_scenes_path(@project), notice: "Creating your video. This page updates as it goes."
     else
       render :new, status: :unprocessable_entity
     end

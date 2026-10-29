@@ -1,4 +1,4 @@
-<% content_for :title, "Scenes · #{@project.title} · Scenivora" %>
+<% content_for :title, "Storyboard · #{@project.title} · Scenivora" %>
 <%# Changes redirect back here; morph the page in place and keep the scroll position instead of jumping. %>
 <% content_for :head, turbo_refreshes_with(method: :morph, scroll: :preserve) %>
 <%= turbo_stream_from @project, :scenes %>
@@ -6,17 +6,34 @@
 <div class="mx-auto max-w-5xl space-y-6">
   <header class="flex flex-wrap items-start justify-between gap-4">
     <div class="min-w-0">
-      <%= link_to "← #{@project.title}", project_path(@project), class: "block max-w-xl truncate text-sm text-zinc-400 hover:text-zinc-200" %>
+      <%= link_to "← Projects", projects_path, class: "text-sm text-zinc-400 hover:text-zinc-200" %>
+      <h1 class="mt-1 max-w-xl truncate text-lg font-semibold"><%= @project.title %></h1>
     </div>
     <%= render "projects/status_badge", project: @project %>
   </header>
 
-  <%= render "projects/wizard", project: @project, current: "Scenes" %>
+  <%= render "projects/wizard", project: @project, current: "Storyboard" %>
 
   <% searching = @project.settings["scenes_searching"] %>
   <% planning_failed = @scenes.any? { |scene| scene.search_error == FindSceneImagesJob::PLANNING_FAILED } %>
+  <% production = @project.settings["production"] || {} %>
 
-  <% if !@track&.confirmed? %>
+  <% if @project.producing? %>
+    <%= render "scenes/production", project: @project %>
+  <% elsif production["step"] == "failed" %>
+    <section class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-5" role="alert">
+      <p class="text-sm text-red-300"><%= production["error"] %></p>
+      <%= button_to "Try again", rewrite_project_scenes_path(@project), method: :post, class: button_classes %>
+    </section>
+  <% elsif @project.storyboard? %>
+    <% if searching %>
+      <p class="rounded-2xl border border-dashed border-amber-400/40 bg-amber-400/5 p-6 text-sm font-medium text-amber-300" role="status">
+        Finding images... This page refreshes when it's done.
+      </p>
+    <% elsif production["note"].present? %>
+      <p class="rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4 text-sm text-violet-200" role="status"><%= production["note"] %></p>
+    <% end %>
+  <% elsif !@track&.confirmed? %>
     <p class="rounded-2xl border border-dashed border-white/10 bg-[#161920] p-6 text-sm text-zinc-400">
       Confirm the narration voice first. The scene timing comes from the confirmed narration's length.
       <%= link_to "Go to Voice", project_voice_path(@project), class: "ml-1 text-amber-300 hover:underline" %>
@@ -58,7 +75,7 @@
     <% end %>
   <% end %>
 
-  <% if planning_failed && !searching %>
+  <% if planning_failed && !searching && !@project.producing? %>
     <section class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
       <p class="text-sm text-red-300">Scene planning failed, so no images were searched.</p>
       <%= button_to "Retry planning · est. #{planner_estimate_label(@project, @track)}", project_scenes_path(@project),
@@ -66,17 +83,20 @@
     </section>
   <% end %>
 
-  <% if @scenes.any? && @current_scene %>
+  <% if @scenes.any? && @current_scene && !@project.producing? %>
     <% counts = scene_image_counts(@scenes) %>
 
     <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
       <section class="min-w-0 space-y-4" aria-labelledby="scenes-heading">
         <div class="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 id="scenes-heading" class="text-2xl font-semibold tracking-tight">Scenes</h2>
+            <h2 id="scenes-heading" class="text-2xl font-semibold tracking-tight">Storyboard</h2>
             <p class="mt-1 text-sm text-zinc-400">
-              <%= pluralize(@scenes.size, "scene") %> · <%= format_timecode(@scenes.last.end_ms) %> narration
+              <%= pluralize(@scenes.size, "scene") %> · <%= format_timecode(@scenes.last.end_ms) %> narration<%= " (estimated until the voice is made)" if @project.storyboard? && !@project.music_available? %>
             </p>
+            <% if @project.storyboard? %>
+              <p class="mt-1 text-xs text-zinc-500">Edit any scene's narration or picture, then approve the storyboard to make the voice.</p>
+            <% end %>
           </div>
           <div class="flex flex-wrap gap-2 text-xs font-medium">
             <span class="rounded-full bg-emerald-500/15 px-2.5 py-1 text-emerald-300"><%= pluralize(counts[:free], "free image") %></span>
@@ -148,7 +168,16 @@
                   <%= media_check_badge(scene) %>
                 </div>
 
-                <p class="text-sm text-zinc-200"><%= scene.text %></p>
+                <% if @project.storyboard? %>
+                  <%= form_with model: scene, url: scene_path(scene), method: :patch, class: "space-y-2" do |form| %>
+                    <%= form.label :text, "Narration for scene #{scene.position}", class: "sr-only" %>
+                    <%= form.text_area :text, rows: 3, maxlength: StoryboardScenesController::MAX_TEXT,
+                          class: "#{field_classes.sub("mt-1 ", "")} resize-y text-sm" %>
+                    <%= form.submit "Save text", class: small_button_classes %>
+                  <% end %>
+                <% else %>
+                  <p class="text-sm text-zinc-200"><%= scene.text %></p>
+                <% end %>
                 <% if image && scene.media_note.present? && scene.media_check != "ai_suggested" %>
                   <p class="text-xs text-zinc-500"><%= scene.media_note %></p>
                 <% end %>
@@ -188,6 +217,11 @@
                   <% if image %>
                     <%= button_to "Remove", scene_clear_image_path(scene), method: :delete,
                           class: "rounded-lg px-3 py-1.5 text-xs font-semibold text-zinc-400 hover:bg-white/5 hover:text-zinc-200 cursor-pointer" %>
+                  <% end %>
+                  <% if @project.storyboard? && @scenes.size > 1 %>
+                    <%= button_to "Delete scene", scene_path(scene), method: :delete,
+                          form: { data: { turbo_confirm: "Delete scene #{scene.position} and its narration?" } },
+                          class: "rounded-lg px-3 py-1.5 text-xs font-semibold text-red-300/80 hover:bg-red-500/10 hover:text-red-300 cursor-pointer" %>
                   <% end %>
                 </div>
               </div>
@@ -273,14 +307,20 @@
         </p>
 
         <div class="mt-5 border-t border-white/5 pt-5">
+          <% approve_label = @project.storyboard? ? "Approve storyboard & choose voice" : "Approve scenes & continue" %>
           <% if counts[:missing].zero? %>
-            <%= button_to "Approve scenes & continue", approve_project_scenes_path(@project), method: :post,
+            <%= button_to approve_label, approve_project_scenes_path(@project), method: :post,
                   class: "#{button_classes} w-full" %>
           <% else %>
-            <button type="button" disabled class="<%= button_classes %> w-full">Approve scenes &amp; continue</button>
+            <button type="button" disabled class="<%= button_classes %> w-full"><%= approve_label %></button>
             <p class="mt-2 text-center text-xs text-zinc-500">
               <%= pluralize(counts[:missing], "scene") %> still <%= counts[:missing] == 1 ? "needs" : "need" %> an image.
             </p>
+          <% end %>
+          <% if @project.storyboard? %>
+            <%= button_to "Rewrite storyboard", rewrite_project_scenes_path(@project), method: :post,
+                  form: { data: { turbo_confirm: "Write a new script and storyboard for this brief? Your edits, uploads and AI images here are replaced." } },
+                  class: "#{secondary_button_classes} mt-3 w-full" %>
           <% end %>
         </div>
       </aside>

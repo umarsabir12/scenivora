@@ -32,6 +32,11 @@ class VoicesController < ApplicationController
       redirect_to project_voice_path(@project), alert: "Generate a voice before confirming it."
     elsif track.stale_for?(@project.latest_script)
       redirect_to project_voice_path(@project), alert: "The script changed since this voice was generated. Regenerate it first."
+    elsif @project.storyboard?
+      track.update!(confirmed_at: Time.current)
+      @project.time_scenes_from_voice!
+      @project.voice_ready! unless @project.music_available?
+      redirect_to project_music_path(@project), notice: "Voice confirmed. Next: music."
     else
       track.update!(confirmed_at: Time.current)
       redirect_to project_scenes_path(@project), notice: "Voice confirmed. Next: scenes."
@@ -46,7 +51,7 @@ class VoicesController < ApplicationController
     def require_script
       return if @project.voice_available?
 
-      redirect_to project_path(@project), alert: "Generate a script before choosing a voice."
+      redirect_to project_scenes_path(@project), alert: "Approve the storyboard before choosing a voice."
     end
 
     def default_voice

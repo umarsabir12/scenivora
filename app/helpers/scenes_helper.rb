@@ -23,6 +23,20 @@ module ScenesHelper
     tag.span(label, class: "rounded-md px-1.5 py-0.5 font-medium #{classes}", title: scene.media_note) if label
   end
 
+  PRODUCTION_LABELS = {
+    "writing" => "Researching the topic and writing the script",
+    "pictures" => "Finding and checking a picture for each scene",
+    "ai_images" => "Starting AI images where no real picture fits"
+  }.freeze
+
+  # [label, :done | :current | :waiting] for each step of "Create video".
+  def production_steps(project)
+    current = Project::PRODUCTION_STEPS.index(project.production_step) || 0
+    Project::PRODUCTION_STEPS.each_with_index.map do |step, index|
+      [ PRODUCTION_LABELS.fetch(step), index < current ? :done : (index == current ? :current : :waiting) ]
+    end
+  end
+
   def format_timecode(milliseconds)
     total_seconds = milliseconds / 1000
     format("%d:%02d", total_seconds / 60, total_seconds % 60)

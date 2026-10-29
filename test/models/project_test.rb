@@ -68,12 +68,43 @@ class ProjectTest < ActiveSupport::TestCase
     assert_equal 3, @project.next_script_version
   end
 
-  test "reads the script generating flag from settings" do
-    assert_not @project.script_generating?
+  test "reads the production step from settings" do
+    assert_not @project.producing?
 
-    @project.update!(settings: { "script_generating" => true })
+    @project.update!(settings: { "production" => { "step" => "pictures" } })
+    assert @project.producing?
 
-    assert @project.script_generating?
+    @project.update!(settings: { "production" => { "step" => "done" } })
+    assert_not @project.producing?
+  end
+
+  test "a storyboard's steps: voice after approval, music after the voice" do
+    @project.update!(settings: { "storyboard" => true }, status: :script_ready)
+    assert_not @project.voice_available?
+    assert_not @project.music_available?
+
+    @project.scenes_ready!
+    assert @project.voice_available?
+    assert_not @project.music_available?
+
+    @project.voice_ready!
+    assert @project.music_available?
+  end
+
+  test "after a storyboard edit the script follows the scenes, times are estimated and the voice is redone" do
+    @project.update!(settings: { "storyboard" => true }, status: :voice_ready)
+    @project.scripts.create!(body: "Old.", version: 1)
+    @project.scenes.create!(position: 2, text: "#{"word " * 15}end.", start_ms: 0, duration_ms: 9_000)
+    @project.scenes.create!(position: 3, text: "Short.", start_ms: 9_000, duration_ms: 9_000)
+    track = @project.create_voice_track!(kind: "voice", voice_name: "alloy", speed: 1.0, confirmed_at: Time.current)
+
+    @project.storyboard_changed!
+
+    @project.reload
+    assert_equal "#{"word " * 15}end.\n\nShort.", @project.latest_script.body
+    assert_equal [ [ 1, 0, 6_400 ], [ 2, 6_400, 2_000 ] ], @project.scenes.map { |s| [ s.position, s.start_ms, s.duration_ms ] }
+    assert_nil track.reload.confirmed_at
+    assert @project.script_ready?
   end
 
   test "destroying a project destroys its scripts and usage" do

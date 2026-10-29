@@ -4,7 +4,7 @@
   <div>
     <%= link_to "← Projects", projects_path, class: "text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200" %>
     <h1 class="mt-2 text-2xl font-bold tracking-tight">New project</h1>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Tell us what the video is about. You'll review and edit the script next.</p>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Tell us what the video is about. You'll review and edit the storyboard next.</p>
   </div>
 
   <%= form_with model: @project, class: "mt-8 space-y-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200 sm:p-8 dark:bg-gray-900 dark:ring-gray-800" do |form| %>
@@ -51,7 +51,8 @@
 
     <div class="flex items-center justify-end gap-3 pt-2">
       <%= link_to "Cancel", projects_path, class: secondary_button_classes %>
-      <%= form.submit "Create project", class: button_classes %>
+      <%= form.submit "Create video", class: button_classes %>
     </div>
+    <p class="text-right text-xs text-gray-500 dark:text-gray-400"><%= create_video_note %></p>
   <% end %>
 </div>

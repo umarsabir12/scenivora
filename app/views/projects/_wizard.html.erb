@@ -1,6 +1,6 @@
 <%# Steps after the current one show as disabled until their features ship. %>
 <nav aria-label="Production steps">
-  <ol class="grid grid-cols-2 gap-2 sm:grid-cols-6">
+  <ol class="grid grid-cols-2 gap-2 sm:grid-cols-5">
     <% ProjectsHelper::WIZARD_STEPS.each.with_index(1) do |step, number| %>
       <% active = step == current %>
       <% done = wizard_step_done?(project, step) %>
