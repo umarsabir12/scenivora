@@ -6,7 +6,7 @@ class ProjectsController < ApplicationController
   def index
     @filter = params[:filter].presence_in(FILTERS)
     @projects = filtered(current_user.projects.order(created_at: :desc))
-    @new_project = current_user.projects.build(tone: "documentary", target_length_minutes: 6, category: "history")
+    @new_project = current_user.projects.build(tone: "documentary", target_length_minutes: 6)
   end
 
   # A project opens on its storyboard.
@@ -15,7 +15,7 @@ class ProjectsController < ApplicationController
   end
 
   def new
-    @project = current_user.projects.build(tone: "documentary", target_length_minutes: 6, category: "history")
+    @project = current_user.projects.build(tone: "documentary", target_length_minutes: 6)
   end
 
   # "Create video": saves the brief and starts research, script, scenes and pictures, then opens
@@ -37,7 +37,7 @@ class ProjectsController < ApplicationController
     end
 
     def project_params
-      params.expect(project: %i[prompt tone target_length_minutes category instructions])
+      params.expect(project: %i[prompt tone target_length_minutes instructions])
     end
 
     def filtered(scope)

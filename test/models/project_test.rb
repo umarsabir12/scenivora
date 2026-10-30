@@ -26,14 +26,10 @@ class ProjectTest < ActiveSupport::TestCase
     assert project.errors[:target_length_minutes].any?
   end
 
-  test "category is optional but must be a known one, and instructions are capped" do
+  test "instructions are optional but capped" do
     project = users(:one).projects.build(prompt: "Tides", tone: "casual", target_length_minutes: 3)
     assert project.valid?
 
-    project.category = "cooking"
-    assert_not project.valid?
-
-    project.category = "science"
     project.instructions = "x" * (Project::MAX_INSTRUCTIONS + 1)
     assert_not project.valid?
     assert project.errors.of_kind?(:instructions, :too_long)

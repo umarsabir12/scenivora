@@ -123,7 +123,7 @@ the page shows "Generating..." or "Starting..." until it starts.
 1. **Sign up or sign in.** Password reset emails are not sent through a mail service in
    development. Open `log/development.log` and copy the reset link from the email.
 2. **Dashboard.** Type a brief in "What's your next video about?", optionally add instructions
-   ("Focus on the escape"), pick a category, tone and length, and click **Create video**. The
+   ("Focus on the escape"), pick a tone and length, and click **Create video**. The
    project opens on its storyboard straight away, which shows the progress (about 5 to 10
    minutes; measured 8.5 minutes for a 3-minute video with 21 scenes): researching and writing the script, finding and checking a picture for each scene,
    and starting AI images (up to 8, paid in credits) where no real picture fits. Filter the
@@ -169,7 +169,7 @@ the providers, downloads and ffmpeg are replaced with fakes.
 ### Data model
 
 - `User`: Devise account, `credits_balance` (placeholder, shown in the top bar).
-- `Project`: brief (`prompt`), optional `category` and `instructions`, `tone`, `target_length_minutes`, `status`
+- `Project`: brief (`prompt`), optional `instructions`, `tone`, `target_length_minutes`, `status`
   (`draft → script_ready → scenes_ready → voice_ready → media_ready → rendering → rendered` for
   storyboard projects; see "Create video" below), and `settings` (JSON):
   `settings["production"]` holds the Create video step, `settings["storyboard"]` marks a
@@ -217,11 +217,11 @@ before the storyboard keep the old order (script → voice → scenes).
 
 `ScriptWriter`:
 
-1. **Research first** (`Ai::Researcher`, about $0.50): the strong model searches English Wikipedia
-   for the brief, its category and instructions, and returns up to 20 dated facts, checked article
-   titles, up to 25 showable "visual subjects" (people, places, ships, buildings, documents) and
-   uncertain claims. It is saved in `project.settings["research"]` and reused while the brief,
-   category and instructions stay the same, so **Rewrite** doesn't pay for it again.
+1. **Research first** (`Ai::Researcher`, about $0.50): the strong model searches English Wikipedia,
+   then trusted news and reference sites, for the brief and its instructions, and returns up to 20
+   dated facts, checked article titles, up to 25 showable "visual subjects" (people, places, ships,
+   buildings, documents), uncertain claims and whether the brief's own story holds up. It is saved in `project.settings["research"]` and reused while the brief
+   and instructions stay the same, so **Rewrite** doesn't pay for it again.
 2. **Script from the research** (`OPENAI_SCRIPT_MODEL`, defaulting to the Director's `gpt-5.5`):
    the usual rules (hook in the first 15 seconds, a turning point, about 150 words per minute,
    plain narration only), plus: only facts from the research, uncertain items attributed, a

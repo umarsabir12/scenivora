@@ -131,7 +131,7 @@ class ScriptWriterTest < ActiveSupport::TestCase
   end
 
   test "researches first, then writes the script from the facts with the strong model" do
-    @project.update!(category: "science", instructions: "Focus on the cables.")
+    @project.update!(instructions: "Focus on the cables.")
     writer = FakeWriter.new
     fallback = FakeGenerator.new(generation_result)
 
@@ -145,7 +145,6 @@ class ScriptWriterTest < ActiveSupport::TestCase
     assert_includes prompt, "- Golden Gate Bridge (building, 1937)"
     assert_includes prompt, "- Legend says a worker is sealed in a tower."
     assert_includes prompt, "The creator's instructions: Focus on the cables."
-    assert_includes prompt, "Category: science."
     assert_includes writer.args[:instructions], "Every paragraph names at least one concrete visual subject"
     assert_nil writer.args[:domains]
     assert_equal [ "Suspension cables are spun from thousands of steel wires." ], @project.settings["research"]["facts"]

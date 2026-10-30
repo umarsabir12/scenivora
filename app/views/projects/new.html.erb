@@ -32,12 +32,7 @@
             class: field_classes %>
     </div>
 
-    <div class="grid gap-6 sm:grid-cols-3">
-      <div>
-        <%= form.label :category, class: "block text-sm font-medium text-gray-700 dark:text-gray-300" %>
-        <%= form.select :category, category_options, {}, class: field_classes %>
-      </div>
-
+    <div class="grid gap-6 sm:grid-cols-2">
       <div>
         <%= form.label :tone, class: "block text-sm font-medium text-gray-700 dark:text-gray-300" %>
         <%= form.select :tone, tone_options, {}, class: field_classes %>

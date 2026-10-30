@@ -1,17 +1,5 @@
 class Project < ApplicationRecord
   TONES = %w[documentary dramatic inspirational casual].freeze
-  # What each category asks of the research and the script.
-  CATEGORIES = {
-    "history" => "Events in order, with dates, places and the people involved.",
-    "biography" => "One person's life: origins, turning points and achievements, with dates and places.",
-    "religion" => "Respectful and accurate. Attribute traditions to their sources and follow the depiction rules for revered figures.",
-    "war" => "Campaigns, battles, commanders, ships and places, with dates. No graphic violence.",
-    "science" => "Discoveries, the people and instruments behind them, and clear explanations.",
-    "mysteries" => "Separate established facts from theories, and say who claims what.",
-    "nature" => "Animals, landscapes and natural events: where, when and at what scale.",
-    "places" => "Cities, buildings and landscapes: their history, landmarks and what they look like.",
-    "sports" => "Players, clubs, matches and careers, with dates, places and results. Say who told each personal story."
-  }.freeze
   MAX_INSTRUCTIONS = 1_000
   TARGET_LENGTH_MINUTES = (3..10).freeze
   WORDS_PER_MINUTE = 150
@@ -44,7 +32,6 @@ class Project < ApplicationRecord
   validates :title, presence: true, length: { maximum: 120 }
   validates :prompt, presence: true, length: { maximum: 2_000 }
   validates :tone, inclusion: { in: TONES }
-  validates :category, inclusion: { in: CATEGORIES.keys }, allow_blank: true
   validates :instructions, length: { maximum: MAX_INSTRUCTIONS }
   validates :target_length_minutes, numericality: { only_integer: true, in: TARGET_LENGTH_MINUTES }
   validates :yt_title, length: { maximum: Ai::MetadataGenerator::MAX_TITLE }

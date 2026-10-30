@@ -50,8 +50,7 @@ module Ai
 
       Rules:
       - Research the story the brief asks for: most facts are about that story and its moment.
-        Add at most a few facts about what came before or after, as context. The category only sets
-        the style; the brief decides the subject.
+        Add at most a few facts about what came before or after, as context.
       - A story someone told about themselves (in an interview, a book, a speech) is attributable:
         write it as a fact saying who told it, where and when ("In a 2016 interview, X said ...").
       - story_check: "verified" when reliable sources report the brief's story as fact, "attributed"
@@ -68,9 +67,9 @@ module Ai
       @titles = titles
     end
 
-    # Identifies "this brief": research is reused while the brief, category and instructions stay the same.
+    # Identifies "this brief": research is reused while the brief and instructions stay the same.
     def self.key_for(project)
-      Digest::SHA256.hexdigest([ project.prompt, project.category, project.instructions ].map(&:to_s).join("\n"))
+      Digest::SHA256.hexdigest([ project.prompt, project.instructions ].map(&:to_s).join("\n"))
     end
 
     def call(project)
@@ -87,7 +86,6 @@ module Ai
     private
       def input_for(project)
         lines = [ "Brief: #{project.prompt}" ]
-        lines << "Category: #{project.category} (#{Project::CATEGORIES[project.category]}) The brief decides the subject." if project.category.present?
         lines << "The creator's instructions: #{project.instructions}" if project.instructions.present?
         lines << "Target length: #{project.target_length_minutes} minutes"
         lines.join("\n")

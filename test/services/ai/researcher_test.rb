@@ -30,7 +30,7 @@ class Ai::ResearcherTest < ActiveSupport::TestCase
 
   setup do
     @project = users(:one).projects.create!(prompt: "Prince Philip: the baby smuggled out of Greece in an orange box",
-                                            tone: "dramatic", target_length_minutes: 5, category: "biography",
+                                            tone: "dramatic", target_length_minutes: 5,
                                             instructions: "Focus on the escape.")
   end
 
@@ -54,14 +54,13 @@ class Ai::ResearcherTest < ActiveSupport::TestCase
     [ Ai::Researcher.new(generator: generator, titles: titles).call(@project), generator ]
   end
 
-  test "searches Wikipedia first, then news and reference sites, with the brief, category and instructions" do
+  test "searches Wikipedia first, then news and reference sites, with the brief and instructions" do
     _research, generator = research
 
     assert_equal "en.wikipedia.org", generator.args[:domains].first
     assert_includes generator.args[:domains], "bbc.co.uk"
     assert_equal Ai::Researcher::MAX_SEARCHES, generator.args[:max_searches]
     assert_includes generator.args[:input], "Brief: Prince Philip: the baby smuggled"
-    assert_includes generator.args[:input], "Category: biography (One person's life"
     assert_includes generator.args[:input], "The creator's instructions: Focus on the escape."
   end
 
@@ -101,7 +100,7 @@ class Ai::ResearcherTest < ActiveSupport::TestCase
     assert_raises(Ai::Error) { researcher.call(@project) }
   end
 
-  test "the key changes with the brief, category or instructions, not with tone or length" do
+  test "the key changes with the brief or instructions, not with tone or length" do
     key = Ai::Researcher.key_for(@project)
 
     @project.tone = "casual"

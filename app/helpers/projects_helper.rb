@@ -67,9 +67,6 @@ module ProjectsHelper
       "#{pluralize(CreditPricing.ai_image, "credit")} each."
   end
 
-  def category_options
-    Project::CATEGORIES.keys.map { |category| [ category.humanize, category ] }
-  end
 
   def target_length_options
     Project::TARGET_LENGTH_MINUTES.map { |minutes| [ "#{minutes} minutes", minutes ] }

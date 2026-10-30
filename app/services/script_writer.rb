@@ -110,7 +110,6 @@ class ScriptWriter
     def user_prompt_for(project)
       lines = [ "Brief: #{project.prompt}", "Tone: #{project.tone}",
                 "Target length: #{project.target_length_minutes} minutes (about #{project.target_word_count} words)" ]
-      lines << "Category: #{project.category}. #{Project::CATEGORIES[project.category]} The brief decides the subject." if project.category.present?
       lines << "The creator's instructions: #{project.instructions}" if project.instructions.present?
       lines.join("\n")
     end

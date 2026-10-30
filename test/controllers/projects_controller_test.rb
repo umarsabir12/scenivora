@@ -31,7 +31,7 @@ class ProjectsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_select "select[name='project[tone]']"
     assert_select "select[name='project[target_length_minutes]']"
-    assert_select "select[name='project[category]']"
+    assert_select "select[name='project[category]']", count: 0
     assert_select "textarea[name='project[instructions]']"
   end
 
@@ -61,16 +61,15 @@ class ProjectsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to project_scenes_url(project)
   end
 
-  test "create keeps the category and instructions" do
+  test "create keeps the instructions" do
     sign_in @user
 
     post projects_url, params: {
       project: { prompt: "Prince Philip's escape from Greece", tone: "dramatic", target_length_minutes: 5,
-                 category: "biography", instructions: "Focus on the escape." }
+                 instructions: "Focus on the escape." }
     }
 
     project = Project.order(:created_at).last
-    assert_equal "biography", project.category
     assert_equal "Focus on the escape.", project.instructions
   end
 
