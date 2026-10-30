@@ -44,7 +44,8 @@ class Ai::ResearcherTest < ActiveSupport::TestCase
         { name: "hms calypso", kind: "ship" },
         "not a hash"
       ],
-      uncertain: [ "That he was hidden as cargo is a later embellishment." ]
+      uncertain: [ "That he was hidden as cargo is a later embellishment." ],
+      story_check: { status: "attributed", note: "  Biographers report the fruit-box cot. " }
     }.to_json + "\n```"
   end
 
@@ -53,10 +54,11 @@ class Ai::ResearcherTest < ActiveSupport::TestCase
     [ Ai::Researcher.new(generator: generator, titles: titles).call(@project), generator ]
   end
 
-  test "searches Wikipedia only, with the brief, category and instructions" do
+  test "searches Wikipedia first, then news and reference sites, with the brief, category and instructions" do
     _research, generator = research
 
-    assert_equal [ "en.wikipedia.org" ], generator.args[:domains]
+    assert_equal "en.wikipedia.org", generator.args[:domains].first
+    assert_includes generator.args[:domains], "bbc.co.uk"
     assert_equal Ai::Researcher::MAX_SEARCHES, generator.args[:max_searches]
     assert_includes generator.args[:input], "Brief: Prince Philip: the baby smuggled"
     assert_includes generator.args[:input], "Category: biography (One person's life"
@@ -75,6 +77,15 @@ class Ai::ResearcherTest < ActiveSupport::TestCase
     assert_equal [ "That he was hidden as cargo is a later embellishment." ], result.uncertain
     assert_equal BigDecimal("0.24"), result.cost_usd
     assert_equal 5, result.searches
+    assert_equal({ "status" => "attributed", "note" => "Biographers report the fruit-box cot." }, result.story_check)
+  end
+
+  test "a missing or unknown story check counts as verified" do
+    generator = FakeGenerator.new({ facts: [ "A fact." ], story_check: { status: "probably" } }.to_json)
+    result = Ai::Researcher.new(generator: generator, titles: FakeTitles.new({})).call(@project)
+
+    assert_equal({ "status" => "verified", "note" => "" }, result.story_check)
+    assert_equal "verified", result.to_settings("key")["story_check"]["status"]
   end
 
   test "keeps the titles as given when Wikipedia can't be reached" do

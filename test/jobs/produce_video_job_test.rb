@@ -91,6 +91,15 @@ class ProduceVideoJobTest < ActiveJob::TestCase
     assert_equal "2 scenes still need an AI image.", @project.settings.dig("production", "note")
   end
 
+  test "tells the user when the brief's story couldn't be verified" do
+    @project.update!(settings: @project.settings.merge("research" => { "story_check" => { "status" => "unverified", "note" => "No source names the women." } }))
+
+    produce(needs_ai: [])
+
+    assert_equal "The story in your brief couldn't be verified, so the script tells it as a story, not as fact. No source names the women.",
+                 @project.reload.settings.dig("production", "note")
+  end
+
   test "when writing fails, the run is marked failed and the project stays a draft" do
     produce(writer: FakeWriter.new(error: Ai::Error.new("Text generation failed: quota")))
 

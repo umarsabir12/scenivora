@@ -9,7 +9,8 @@ class Project < ApplicationRecord
     "science" => "Discoveries, the people and instruments behind them, and clear explanations.",
     "mysteries" => "Separate established facts from theories, and say who claims what.",
     "nature" => "Animals, landscapes and natural events: where, when and at what scale.",
-    "places" => "Cities, buildings and landscapes: their history, landmarks and what they look like."
+    "places" => "Cities, buildings and landscapes: their history, landmarks and what they look like.",
+    "sports" => "Players, clubs, matches and careers, with dates, places and results. Say who told each personal story."
   }.freeze
   MAX_INSTRUCTIONS = 1_000
   TARGET_LENGTH_MINUTES = (3..10).freeze

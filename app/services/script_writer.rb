@@ -34,6 +34,11 @@ class ScriptWriter
     - No abstract moral or "legacy" paragraphs, no "As we reflect", no "stay to the end", no calls to
       like or subscribe. End on a concrete fact, place or image rather than a moral.
     - Follow the creator's instructions when they are given.
+    - Attributed stories: tell them as what the person said ("Ronaldo has said that ..."), not as
+      plain fact.
+    - When the brief's story is marked unverified, still tell that story, framed as what is told
+      ("The story goes that ..."), in a sentence or two. Do not spend paragraphs proving or
+      disproving it, and do not fill the length with unrelated background.
   PROMPT
 
   # A script longer than the prompt's maximum (10% over its target) is shortened once.
@@ -105,7 +110,7 @@ class ScriptWriter
     def user_prompt_for(project)
       lines = [ "Brief: #{project.prompt}", "Tone: #{project.tone}",
                 "Target length: #{project.target_length_minutes} minutes (about #{project.target_word_count} words)" ]
-      lines << "Category: #{project.category}. #{Project::CATEGORIES[project.category]}" if project.category.present?
+      lines << "Category: #{project.category}. #{Project::CATEGORIES[project.category]} The brief decides the subject." if project.category.present?
       lines << "The creator's instructions: #{project.instructions}" if project.instructions.present?
       lines.join("\n")
     end
@@ -118,6 +123,8 @@ class ScriptWriter
       lines = [ user_prompt_for(project), "Word count: between #{(words * 0.9).round} and #{(words * 1.1).round} words." ]
       lines << "\nResearch facts:\n#{Array(research["facts"]).map { |fact| "- #{fact}" }.join("\n")}"
       lines << "\nVisual subjects:\n#{subjects.join("\n")}"
+      check = research["story_check"]
+      lines << "\nThe brief's story: #{check["status"]}. #{check["note"]}".rstrip if check.is_a?(Hash) && check["status"].present?
       lines << "\nUncertain (attribute or leave out):\n#{research["uncertain"].map { |item| "- #{item}" }.join("\n")}" if Array(research["uncertain"]).any?
       lines.join("\n")
     end

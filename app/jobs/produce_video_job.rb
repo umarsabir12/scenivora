@@ -17,7 +17,7 @@ class ProduceVideoJob < ApplicationJob
     FindSceneImagesJob.perform_now(project)
 
     advance(project, "ai_images")
-    note = start_ai_images(project)
+    note = [ story_note(project), start_ai_images(project) ].compact.join(" ").presence
 
     project.update!(status: :script_ready, settings: project.settings.merge("production" => { "step" => "done", "note" => note }.compact))
   rescue StandardError => e
@@ -45,6 +45,15 @@ class ProduceVideoJob < ApplicationJob
         project.voice_track&.update!(confirmed_at: nil)
         project.update!(settings: project.settings.merge("storyboard" => true).except("scene_key"))
       end
+    end
+
+    # Tells the user when the research found no reliable source for the brief's own story, so they
+    # know the script tells it as a story rather than as fact.
+    def story_note(project)
+      check = project.settings.dig("research", "story_check")
+      return unless check.is_a?(Hash) && check["status"] == "unverified"
+
+      "The story in your brief couldn't be verified, so the script tells it as a story, not as fact. #{check["note"]}".strip
     end
 
     # AI images for the scenes no real picture fits, hook scenes first, while the user's credits last.

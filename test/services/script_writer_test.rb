@@ -44,8 +44,9 @@ class ScriptWriterTest < ActiveSupport::TestCase
   class FakeResearcher
     attr_reader :calls
 
-    def initialize(error: nil)
+    def initialize(error: nil, story_check: { "status" => "verified", "note" => "" })
       @error = error
+      @story_check = story_check
       @calls = 0
     end
 
@@ -56,7 +57,7 @@ class ScriptWriterTest < ActiveSupport::TestCase
       Ai::Researcher::Research.new(
         facts: [ "Suspension cables are spun from thousands of steel wires." ], articles: [ "Suspension bridge" ],
         visual_subjects: [ { "name" => "Golden Gate Bridge", "kind" => "building", "article" => "Golden Gate Bridge", "year" => "1937" } ],
-        uncertain: [ "Legend says a worker is sealed in a tower." ], total_tokens: 20_000, cost_usd: BigDecimal("0.2"),
+        uncertain: [ "Legend says a worker is sealed in a tower." ], story_check: @story_check, total_tokens: 20_000, cost_usd: BigDecimal("0.2"),
         searches: 4, dropped_articles: [])
     end
   end
@@ -150,6 +151,16 @@ class ScriptWriterTest < ActiveSupport::TestCase
     assert_equal [ "Suspension cables are spun from thousands of steel wires." ], @project.settings["research"]["facts"]
     assert_equal({ "research" => BigDecimal("0.2"), "script" => BigDecimal("0.05") },
                  @project.api_usages.pluck(:operation, :cost_usd).to_h)
+  end
+
+  test "tells the writer when the brief's own story couldn't be verified" do
+    writer = FakeWriter.new
+    check = { "status" => "unverified", "note" => "No reliable source reports the sealed worker." }
+
+    perform_with(FakeGenerator.new(generation_result), researcher: FakeResearcher.new(story_check: check), writer: writer)
+
+    assert_includes writer.args[:input], "The brief's story: unverified. No reliable source reports the sealed worker."
+    assert_includes writer.args[:instructions], "framed as what is told"
   end
 
   test "asks for the target length, and shortens a script that is much too long once" do

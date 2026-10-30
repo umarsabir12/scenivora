@@ -5,14 +5,24 @@ module Ai
   class Researcher
     # visual_subjects: [{ "name", "kind", "article" (nil if none exists), "year" }].
     # uncertain: legends and single-source claims, to attribute or leave out.
-    Research = Data.define(:facts, :articles, :visual_subjects, :uncertain, :total_tokens, :cost_usd, :searches,
-                           :dropped_articles) do
+    # story_check: whether the brief's own story holds up: { "status" => "verified" | "attributed" | "unverified", "note" }.
+    Research = Data.define(:facts, :articles, :visual_subjects, :uncertain, :story_check, :total_tokens, :cost_usd,
+                           :searches, :dropped_articles) do
+      def initialize(story_check: { "status" => "verified", "note" => "" }, **rest)
+        super
+      end
+
       def to_settings(key)
-        { "key" => key, "facts" => facts, "articles" => articles, "visual_subjects" => visual_subjects, "uncertain" => uncertain }
+        { "key" => key, "facts" => facts, "articles" => articles, "visual_subjects" => visual_subjects, "uncertain" => uncertain,
+          "story_check" => story_check }
       end
     end
 
-    DOMAINS = %w[en.wikipedia.org].freeze
+    # Wikipedia first. The news and reference sites cover what Wikipedia leaves out, above all what
+    # people said in interviews, so a story the subject told can be attributed rather than dropped.
+    DOMAINS = %w[en.wikipedia.org britannica.com bbc.com bbc.co.uk theguardian.com reuters.com apnews.com nytimes.com
+                 washingtonpost.com npr.org espn.com smithsonianmag.com nationalgeographic.com history.com].freeze
+    STORY_STATUSES = %w[verified attributed unverified].freeze
     MAX_SEARCHES = 10
     MAX_FACTS = 20
     MAX_ARTICLES = 12
@@ -22,8 +32,10 @@ module Ai
 
     PROMPT = <<~PROMPT.freeze
       You research the topic of a documentary video before its script is written. Search English
-      Wikipedia for what really happened: the people, places, ships, buildings, objects, documents
-      and events involved, with dates. Search only for what you are unsure of.
+      Wikipedia first for what really happened: the people, places, ships, buildings, objects,
+      documents and events involved, with dates. Use the news and reference sites you can search for
+      what Wikipedia leaves out, such as interviews and personal stories. Search only for what you
+      are unsure of.
 
       Return only a JSON object:
       {"facts": ["<up to 20 short facts with dates, in story order>"],
@@ -32,11 +44,18 @@ module Ai
                             "kind": "person" | "place" | "ship" | "building" | "object" | "document" | "event",
                             "article": "<its exact Wikipedia article title, or null>",
                             "year": "<the year that matters for this video, or null>"}],
-       "uncertain": ["<legends, disputed or single-source claims, saying who claims them>"]}
+       "uncertain": ["<legends, disputed or single-source claims, saying who claims them>"],
+       "story_check": {"status": "verified" | "attributed" | "unverified",
+                       "note": "<one sentence for the creator: what the sources say about the brief's own story>"}}
 
       Rules:
       - Research the story the brief asks for: most facts are about that story and its moment.
-        Add at most a few facts about what came before or after, as context.
+        Add at most a few facts about what came before or after, as context. The category only sets
+        the style; the brief decides the subject.
+      - A story someone told about themselves (in an interview, a book, a speech) is attributable:
+        write it as a fact saying who told it, where and when ("In a 2016 interview, X said ...").
+      - story_check: "verified" when reliable sources report the brief's story as fact, "attributed"
+        when it rests on what someone said, "unverified" when you found no reliable source for it.
       - Facts only from your research, never from the brief alone: briefs can be wrong.
       - Visual subjects: up to 25 concrete, showable things (HMS Calypso, Mon Repos villa, a
         1922 newspaper), not ideas (exile, courage, legacy).
@@ -60,14 +79,15 @@ module Ai
       articles, subjects, dropped = with_real_articles(strings(data["articles"], MAX_ARTICLES), subjects_from(data["visual_subjects"]))
 
       Research.new(facts: strings(data["facts"], MAX_FACTS), articles: articles, visual_subjects: subjects,
-                   uncertain: strings(data["uncertain"], MAX_UNCERTAIN), total_tokens: response.total_tokens,
+                   uncertain: strings(data["uncertain"], MAX_UNCERTAIN), story_check: story_check_from(data["story_check"]),
+                   total_tokens: response.total_tokens,
                    cost_usd: response.cost_usd, searches: response.searches, dropped_articles: dropped)
     end
 
     private
       def input_for(project)
         lines = [ "Brief: #{project.prompt}" ]
-        lines << "Category: #{project.category} (#{Project::CATEGORIES[project.category]})" if project.category.present?
+        lines << "Category: #{project.category} (#{Project::CATEGORIES[project.category]}) The brief decides the subject." if project.category.present?
         lines << "The creator's instructions: #{project.instructions}" if project.instructions.present?
         lines << "Target length: #{project.target_length_minutes} minutes"
         lines.join("\n")
@@ -84,6 +104,12 @@ module Ai
 
       def strings(list, limit)
         Array(list).map { |item| item.to_s.squish }.reject(&:empty?).uniq.first(limit)
+      end
+
+      # A missing or unknown status counts as verified, so research from before this check behaves as before.
+      def story_check_from(check)
+        check = {} unless check.is_a?(Hash)
+        { "status" => check["status"].presence_in(STORY_STATUSES) || "verified", "note" => check["note"].to_s.squish.first(300) }
       end
 
       def subjects_from(list)
