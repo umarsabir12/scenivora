@@ -305,13 +305,14 @@ class FindSceneImagesJob < ApplicationJob
       scene.media_check == "chosen" || scene.selected_image&.stored_file?
     end
 
-    # The Director asked for this candidate because the current picture is wrong, so if the
-    # candidate fails the check (or another scene shows it), the scene waits for an AI image.
+    # The Director prefers this candidate. If it can't be used (it fails the check, or another scene
+    # shows it), a checked picture the scene already has stays; only a scene without one waits for an
+    # AI image. Rejecting outright is what "reject" is for.
     def swap_picture(project, scene, decision, verifier)
       candidate = scene.images.find { |media| media.id == decision.candidate_id }
       shown_elsewhere = SceneImage.where(scene: project.scenes, selected: true).where.not(scene_id: scene.id).pluck(:image_url)
       if candidate.nil? || candidate.stored_file? || shown_elsewhere.include?(candidate.image_url)
-        return suggest_ai(scene, "Director: #{decision.note}")
+        return swap_failed(scene, "Director: #{decision.note}")
       end
 
       result = verifier.call(scene: scene, candidates: [ candidate ])
@@ -321,11 +322,19 @@ class FindSceneImagesJob < ApplicationJob
         candidate.select!
         scene.update!(media_check: "verified", media_note: "Director: #{decision.note}", search_error: nil)
       else
-        suggest_ai(scene, "Director: #{decision.note} The replacement didn't pass the picture check.")
+        swap_failed(scene, "Director: #{decision.note} The replacement didn't pass the picture check.")
       end
     rescue Ai::Error => e
       Rails.logger.warn("Checking the Director's swap failed for scene #{scene.id}: #{e.message}")
-      suggest_ai(scene, "Director: #{decision.note}")
+      swap_failed(scene, "Director: #{decision.note}")
+    end
+
+    def swap_failed(scene, note)
+      if scene.selected_image && scene.media_check == "verified"
+        scene.update!(media_note: "#{note} The checked picture stays.")
+      else
+        suggest_ai(scene, note)
+      end
     end
 
     def suggest_ai(scene, note)

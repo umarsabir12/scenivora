@@ -368,7 +368,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert_equal "https://img.example/tesla-1-1.jpg", scene.selected_image.image_url
   end
 
-  test "a swapped-in candidate that fails the picture check leaves the scene to an AI image" do
+  test "a swapped-in candidate that fails the picture check leaves the checked picture in place" do
     swap_first = ->(scene) { decision("swap", candidate_id: scene.images.reject(&:selected?).first.id) if scene.position == 1 }
     first_pick = nil
     verifier = FakeVerifier.new(choose: lambda { |candidates|
@@ -379,8 +379,26 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     run_job(commons: PickySearch.new(found: [ "Tesla 1" ]), director: FakeDirector.new(decide: swap_first), verifier: verifier)
 
     scene = @project.reload.scenes.first
-    assert scene.ai_suggested?
-    assert_match "didn't pass the picture check", scene.media_note
+    assert_equal "verified", scene.media_check
+    assert_equal first_pick, scene.selected_image.id
+    assert_match "didn't pass the picture check. The checked picture stays.", scene.media_note
+  end
+
+  test "a swap to a picture another scene shows leaves the checked picture in place" do
+    swap_first = lambda do |scene|
+      next unless scene.position == 1
+
+      shown = scene.project.scenes.find_by(position: 2).selected_image
+      copy = scene.images.create!(provider: "wikimedia_commons", image_url: shown.image_url, page_url: shown.page_url)
+      decision("swap", candidate_id: copy.id, note: "Use the other scene's photo.")
+    end
+
+    run_job(director: FakeDirector.new(decide: swap_first))
+
+    scene = @project.reload.scenes.first
+    assert_equal "verified", scene.media_check
+    assert scene.selected_image
+    assert_equal "Director: Use the other scene's photo. The checked picture stays.", scene.media_note
   end
 
   test "if the storyboard review fails, the checked pictures stay" do

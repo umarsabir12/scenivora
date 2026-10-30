@@ -85,6 +85,14 @@ module Ai
       candidate another scene already shows. Keep a picture that is right; do not reject for small
       things. Scenes marked "fixed" were chosen by the user: decide "keep" for them.
 
+      A real picture beats an AI image, so reject only for the reasons above:
+      - When no camera could have caught the exact moment (a wave, an explosion, a crossing at night),
+        a real picture of the same event, place or people from that time (the aftermath, the site, the
+        people involved) is right: keep it.
+      - Never reject a picture to save it for another scene.
+      - When two scenes show the same or nearly the same picture, keep it in the scene it fits best
+        and reject or swap it only in the other.
+
       For every scene left without a picture (rejected, or none found), write an ai_prompt: one or
       two sentences describing a period-accurate image of the scene, following its depiction rule.
 
