@@ -52,17 +52,18 @@ module Media
       ActionController::Base.helpers.strip_tags(html.to_s).squish
     end
 
+    # The file pages (with image info and metadata) for up to MAX_TITLES_PER_REQUEST file titles.
+    def metadata_pages(titles)
+      data = @http.get(METADATA_ENDPOINT,
+        action: "query", titles: titles.first(MAX_TITLES_PER_REQUEST).join("|"), prop: "imageinfo",
+        iiprop: "url|size|mime|extmetadata", iiurlwidth: 1600, format: "json", formatversion: 2)
+      Array(data.dig("query", "pages"))
+    end
+
     private
       def file_titles(query, limit)
         data = @http.get(SEARCH_ENDPOINT, q: "#{query} filetype:bitmap", limit: [ limit, MAX_SEARCH_RESULTS ].min)
         Array(data["pages"]).map { |page| page["title"].to_s }.select { |title| title.start_with?("File:") }.uniq
-      end
-
-      def metadata_pages(titles)
-        data = @http.get(METADATA_ENDPOINT,
-          action: "query", titles: titles.first(MAX_TITLES_PER_REQUEST).join("|"), prop: "imageinfo",
-          iiprop: "url|size|mime|extmetadata", iiurlwidth: 1600, format: "json", formatversion: 2)
-        Array(data.dig("query", "pages"))
       end
   end
 end

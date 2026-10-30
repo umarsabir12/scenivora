@@ -37,7 +37,7 @@ module Ai
           "articles": ["<0-2 exact English Wikipedia article titles about that subject>"],
           "visual_intent": "<one sentence: what the viewer should see>",
           "subject_type": "real_person" | "real_place" | "historical_event" | "object" | "generic_scene" | "abstract",
-          "search_queries": ["<4 queries, from specific to broad; the last is 1-3 words, usually the main name or place>"],
+          "search_queries": ["<4 queries of 2-4 words, from specific to broad; the last is usually the main name or place>"],
           "ai_fallback_allowed": true | false,
           "prefer": "video" | "image",
           "depiction": "normal" | "no_face" | "no_figure"
@@ -57,8 +57,11 @@ module Ai
         places that share a name, e.g. 'HMS Calypso (D61)', 'Prince Philip, Duke of Edinburgh'. Do not
         invent articles. If unsure one exists, leave it out.
       - Queries must be concrete ("Mullaghmore harbour Sligo", "Westminster Abbey 1979"), never vague ("sad scene").
-      - The image search matches every word, so keep queries short and drop abstract words such as
-        "symbolism", "chaos", "concept" or "legacy". Example: ["Lahore Resolution 1940", "Minar-e-Pakistan", "Lahore"].
+      - The image search matches every word, so a long query finds nothing: keep every query to 2-4
+        words, the name of the event, place, ship, building or person plus at most a year or one telling
+        word ("Molasses Flood 1919", "USS Nantucket", "Atlantic Avenue Elevated 1919"), and drop
+        abstract words such as "symbolism", "chaos", "concept" or "legacy".
+        Example: ["Lahore Resolution 1940", "Minar-e-Pakistan", "Lahore"].
       - Search the way an archive labels its photos: use the specific names of places, structures,
         machines, ships, people and events, not generic descriptions. For digging the Panama Canal write
         "Culebra Cut steam shovel", not "workers digging canal"; for a disease campaign name the doctor

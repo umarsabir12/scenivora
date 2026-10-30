@@ -50,6 +50,16 @@ class Media::ArticleLibraryTest < ActiveSupport::TestCase
     assert_equal [ @calypso ], library.for_articles([ "HMS Calypso (D61)" ])
   end
 
+  test "puts a scene's own pictures that fit its text first, and lets articles take turns" do
+    ships = (1..3).map { |i| picture("Royal_Navy_ship_#{i}") }
+    fetcher = FakeFetcher.new({ "Royal Navy" => ships, "HMS Calypso (D61)" => [ @calypso ],
+                                "Prince Philip, Duke of Edinburgh" => [ @toddler, @wedding ] })
+    lib = Media::ArticleLibrary.build([ "Royal Navy", "HMS Calypso (D61)", "Prince Philip, Duke of Edinburgh" ], fetcher: fetcher)
+
+    assert_equal [ ships[0], @calypso, ships[1], ships[2] ], lib.for_articles([ "Royal Navy", "HMS Calypso (D61)" ])
+    assert_equal [ @wedding, @toddler ], lib.for_articles([ "Prince Philip, Duke of Edinburgh" ], "the 1947 wedding")
+  end
+
   test "matches library pictures by words in their title, description or categories" do
     lib = library
 

@@ -23,16 +23,15 @@ module Media
         prop: "imageinfo", iiprop: "url|size|mime|extmetadata", iiurlwidth: 1600, format: "json", formatversion: 2)
 
       Array(data.dig("query", "pages")).filter_map do |page|
-        next if page["title"].to_s.match?(SKIP_TITLES) || too_small?(page)
+        next if page["title"].to_s.match?(SKIP_TITLES) || self.class.too_small?(page)
 
         CommonsSearch.result_from(page, provider: PROVIDER, source_article: article)
       end
     end
 
-    private
-      def too_small?(page)
-        info = Array(page["imageinfo"]).first || {}
-        [ info["width"].to_i, info["height"].to_i ].min < MIN_SHORT_SIDE
-      end
+    def self.too_small?(page)
+      info = Array(page["imageinfo"]).first || {}
+      [ info["width"].to_i, info["height"].to_i ].min < MIN_SHORT_SIDE
+    end
   end
 end

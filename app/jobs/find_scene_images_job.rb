@@ -11,6 +11,11 @@ class FindSceneImagesJob < ApplicationJob
   POOL_SIZE = 12
   NO_MATCH = "No matching free image found. Search again, upload one, or generate one with AI.".freeze
   MAX_SEARCHES_PER_SCENE = 6
+  # How the pool is shared: the scene's own articles' pictures, keyword search results and other library
+  # pictures, so one big article can't crowd out what a search finds. Places one source can't fill go
+  # to the others.
+  POOL_SHARES = { own: 6, searched: 4, matched: 2 }.freeze
+  RESEARCH_PICTURES_PER_ARTICLE = 6
   # Opening on footage holds viewers better than a still, so the first scenes look for video first.
   HOOK_SCENES = 2
   MAX_VIDEOS = 2
@@ -18,16 +23,35 @@ class FindSceneImagesJob < ApplicationJob
   PLANNING_FAILED = "Scene planning failed. Create scene again to retry.".freeze
 
   # Fetches each article's pictures once per run, so the library can be built from the research
-  # before planning and again after it without asking Wikipedia twice.
+  # before planning and again after it without asking Wikipedia twice. An article's pictures are the
+  # ones it shows, then the rest of its Commons category, which is often several times bigger.
   class CachedArticleImages
-    def initialize(fetcher = Media::WikipediaArticleImages.new)
+    def initialize(fetcher = Media::WikipediaArticleImages.new, categories = Media::CommonsCategoryImages.new)
       @fetcher = fetcher
+      @categories = categories
       @cache = {}
     end
 
     def images(article)
-      @cache.fetch(article) { @cache[article] = @fetcher.images(article) }
+      @cache.fetch(article) { @cache[article] = (@fetcher.images(article) + category_images(article)).uniq(&:image_url) }
     end
+
+    # The search for videos in the article's Commons category, or nil.
+    def video_query(article)
+      @categories.video_query(article)
+    rescue Media::Error => e
+      Rails.logger.warn("Commons category of #{article.inspect} could not be read: #{e.message}")
+      nil
+    end
+
+    private
+      # A category that can't be read leaves the article's own pictures.
+      def category_images(article)
+        @categories.images(article)
+      rescue Media::Error => e
+        Rails.logger.warn("Commons category of #{article.inspect} could not be read: #{e.message}")
+        []
+      end
   end
 
   def perform(project)
@@ -136,10 +160,11 @@ class FindSceneImagesJob < ApplicationJob
       Media::ArticleLibrary.build(articles, fetcher: @article_images)
     end
 
-    # What the research articles can show, as short lines for the Director's plan.
+    # What the research articles can show, as short lines for the Director's plan: a few from each
+    # article, so every article is represented.
     def research_pictures(research)
       library = Media::ArticleLibrary.build(Array(research["articles"]), fetcher: @article_images)
-      library.items.map do |item|
+      library.by_article.values.flat_map { |items| items.first(RESEARCH_PICTURES_PER_ARTICLE) }.map do |item|
         title = CGI.unescape(item.page_url.to_s[/File:(.+)\z/, 1].to_s).tr("_", " ").sub(/\.\w+\z/, "")
         [ title, (item.taken_on.presence && "taken #{item.taken_on}"), "article: #{item.source_article}" ].compact.join("; ")
       end
@@ -367,10 +392,28 @@ class FindSceneImagesJob < ApplicationJob
       end
     end
 
-    # Video is a bonus: a scene without a good video keeps its images. Only the planner's own
-    # queries are used (broadened ones pull in unrelated footage), and a video's title must share
-    # a real word with the query, because Wikimedia matches words anywhere in a file's description.
+    # Video is a bonus: a scene without a good video keeps its images. Footage filed in the Commons
+    # category of the scene's own articles comes first. Otherwise only the planner's own queries are
+    # used (broadened ones pull in unrelated footage), and a video's title must share a real word with
+    # the query, because Wikimedia matches words anywhere in a file's description.
     def video_candidates_for(scene)
+      category_videos(scene).presence || keyword_videos(scene)
+    end
+
+    def category_videos(scene)
+      Array(scene.plan["articles"]).each do |article|
+        query = @article_images&.video_query(article)
+        next unless query
+
+        videos = Media::CommonsVideoSearch.new.search(query, limit: MAX_VIDEOS)
+        return videos if videos.any?
+      rescue Media::Error => e
+        Rails.logger.warn("Category video search failed for scene #{scene.id}: #{e.message}")
+      end
+      []
+    end
+
+    def keyword_videos(scene)
       queries = [ scene.search_query, *scene.plan["search_queries"] ].compact_blank.uniq.first(MAX_VIDEO_SEARCHES)
       queries.each do |query|
         videos = Media::CommonsVideoSearch.new.search(query, limit: MAX_VIDEOS * 3).select { |video| relevant_title?(video.title, query) }
@@ -387,35 +430,39 @@ class FindSceneImagesJob < ApplicationJob
       (stems.call(title) & stems.call(query)).any?
     end
 
-    # The pool starts with the library: pictures from the scene's own articles, then library pictures
-    # that share words with what the scene should show. Keyword search fills in only when that is
-    # short, because it brings back mostly unrelated files. The relevance check chooses from the pool.
+    # The pool: the best of the scene's own articles' pictures (the article and its Commons category),
+    # what the keyword search finds, and other library pictures that share words with what the scene
+    # should show, in the shares of POOL_SHARES. The search always runs, because even a big library
+    # can miss the moment a scene needs. The relevance check chooses from the pool.
     def candidates_for(scene, use_library: true)
       planned = [ scene.search_query, *scene.plan["search_queries"] ].compact_blank.uniq { |query| query.downcase }
-      results = use_library ? library_candidates(scene, planned) : []
-      return results if results.size >= MAX_CANDIDATES
+      own, matched = use_library ? library_candidates(scene, planned) : [ [], [] ]
+      searched = searched_candidates(scene, planned, own.size + matched.size)
 
-      (results + searched_candidates(scene, planned, results.size)).uniq(&:image_url).first(POOL_SIZE)
+      shares = own.first(POOL_SHARES[:own]) + searched.first(POOL_SHARES[:searched]) + matched.first(POOL_SHARES[:matched])
+      (shares + own + searched + matched).uniq(&:image_url).first(POOL_SIZE)
     end
 
+    # [own, matched]: the scene's own articles' pictures, best match first, and other library pictures
+    # sharing words with the scene.
     def library_candidates(scene, planned)
-      return [] if @library.nil? || @library.empty?
+      return [ [], [] ] if @library.nil? || @library.empty?
 
-      own = @library.for_articles(scene.plan["articles"])
-      matched = @library.matching([ scene.plan["visual_intent"], *planned ].join(" "))
-      (own + matched).uniq(&:image_url).first(POOL_SIZE)
+      text = [ scene.plan["visual_intent"], *planned ].join(" ")
+      own = @library.for_articles(scene.plan["articles"], text)
+      [ own, @library.matching(text) - own ]
     end
 
-    # Searches all of the planner's queries (the first hits of one query are often not the best), then
-    # broader forms of them only if the pool is still small. A failed search moves on; the scene only
-    # reports an error if every search failed and the library gave nothing either.
+    # Searches the planner's first query always, the others while the pool is short, then broader
+    # forms of them only if it is still small. A failed search moves on; the scene only reports an
+    # error if every search failed and the library gave nothing either.
     def searched_candidates(scene, planned, found)
       broader = Media::QueryVariants.for(planned, limit: MAX_SEARCHES_PER_SCENE, topic: scene.project.prompt) - planned
       results = []
       last_error = nil
 
-      (planned + broader).first(MAX_SEARCHES_PER_SCENE).each do |query|
-        break if found + results.size >= POOL_SIZE
+      (planned + broader).first(MAX_SEARCHES_PER_SCENE).each_with_index do |query, index|
+        break if index.positive? && found + results.size >= POOL_SIZE
         next if broader.include?(query) && found + results.size >= MAX_CANDIDATES
 
         begin

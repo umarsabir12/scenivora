@@ -2,7 +2,8 @@ module Media
   # A video's own picture library: the images from every Wikipedia article the planner named, fetched
   # once and shared by all scenes, so a perfect photo found for one scene can serve another.
   class ArticleLibrary
-    MAX_ITEMS = 60
+    # Articles bring their Commons categories too, so a video's library runs to a few hundred pictures.
+    MAX_ITEMS = 300
     MIN_WORD = 4
     # A word found in more than this share of the library (usually the subject's own name) matches
     # almost every picture, so it says nothing about which picture fits a scene.
@@ -40,9 +41,14 @@ module Media
       @items.empty?
     end
 
-    # The pictures from these articles, in the order given.
-    def for_articles(articles)
-      Array(articles).flat_map { |article| @by_article.fetch(article.to_s.squish, []) } & @items
+    # The pictures from these articles. With a text, those sharing the most telling words with it come
+    # first; ties take turns between the articles, so one big article doesn't crowd out the others.
+    def for_articles(articles, text = nil)
+      lists = Array(articles).map { |article| @by_article.fetch(article.to_s.squish, []) & @items }
+      wanted = text ? words(text) - common_words : []
+      turns = lists.flat_map { |list| list.each_with_index.to_a }
+      turns.each_with_index.sort_by { |(item, turn), index| [ -(item_words(item) & wanted).size, turn, index ] }
+           .map { |(item, _), _| item }.uniq(&:image_url)
     end
 
     # Library pictures whose title, description or categories share a telling word with the text, the

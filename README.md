@@ -253,17 +253,22 @@ of searching again.
    prefers video, and what the viewer should see. It also names up to 6 exact English Wikipedia articles for the
    topic (saved in `project.settings["articles"]`) and 0-2 per scene (in `scene.plan["articles"]`).
    If planning fails, the scenes ask to retry and nothing is searched.
-3. **Article library** (`Media::ArticleLibrary`, free): fetches the pictures used in each named
-   Wikipedia article once per video (`Media::WikipediaArticleImages`, one call per article, about a
-   second each), keeps free-licence photos only, dedupes them and keeps about 60. Titles that don't
-   exist are skipped with a log line.
-4. Builds each scene's pool of up to 12 images: its own articles' pictures first, then library
-   pictures sharing the most words with what the scene should show. Only when that pool has fewer
-   than 5 does it search Wikimedia Commons with the planner's queries (written the way archives
-   label photos), then broader forms (`Media::QueryVariants`) that always keep the subject's name,
-   the year and at least 2 words. Server errors are retried. The first 2 scenes (the hook) and scenes
-   marked `prefer: video` also search Commons video (360p or better, the planner's own queries only,
-   and the title must share a real word with the query).
+3. **Article library** (`Media::ArticleLibrary`, free): fetches, once per video, the pictures used in
+   each named Wikipedia article (`Media::WikipediaArticleImages`) and the photos in the article's
+   Commons category and its subcategories (`Media::CommonsCategoryImages`: the category comes from
+   the article's Wikidata item, P373, and is searched with `deepcategory:`). The category is usually
+   several times bigger than the article ("Great Molasses Flood" shows 6 pictures; its category holds
+   24, including the City of Boston Archives photos). Keeps free-licence photos only, dedupes them and
+   keeps up to 300. Titles that don't exist are skipped with a log line.
+4. Builds each scene's pool of up to 12 images, shared between its own articles' pictures (6, those
+   sharing the most words with the scene first), Wikimedia Commons keyword search (4) and other
+   library pictures sharing words with the scene (2); places one source can't fill go to the others.
+   The keyword search always runs the planner's first query (2-4 words, written the way archives
+   label photos), the other queries while the pool is short, then broader forms
+   (`Media::QueryVariants`) that keep the subject's name, the year and at least 2 words. Server
+   errors are retried. The first 2 scenes (the hook) and scenes marked `prefer: video` also look for
+   video (360p or better): first in the Commons categories of the scene's articles, then with the
+   planner's own queries, where the title must share a real word with the query.
 5. **Relevance check** (`Ai::CandidateRanker`, one text call per project, ~$0.0006): judges every
    candidate by its title, description, date and categories, removes off-topic ones and orders the rest.
    Rules: a modern photo doesn't show a historical moment (but is right for scenes about today), and for

@@ -47,6 +47,27 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     end
   end
 
+  # Stands in for the articles' Commons categories: canned pictures and video searches per article.
+  class FakeCategories
+    def initialize(pictures = {}, videos: {}, error: nil)
+      @pictures = pictures
+      @videos = videos
+      @error = error
+    end
+
+    def images(article)
+      raise @error if @error
+
+      @pictures.fetch(article, [])
+    end
+
+    def video_query(article)
+      raise @error if @error
+
+      @videos[article]
+    end
+  end
+
   # Stands in for the Director: plans like the given planner, with facts, or fails when told to.
   class FakeDirector
     attr_reader :calls, :reviews, :plans
@@ -192,10 +213,13 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
   end
 
   def run_job(commons: FakeSearch.new, pixabay: nil, planner: FakePlanner.new, videos: FakeVideoSearch.new, ranker: FakeRanker.new,
-              verifier: FakeVerifier.new, rewriter: FakeRewriter.new, articles: FakeArticles.new, director: nil)
+              verifier: FakeVerifier.new, rewriter: FakeRewriter.new, articles: FakeArticles.new, director: nil,
+              categories: FakeCategories.new)
     with_stubbed_method(Ai::Director, :enabled?, -> { !director.nil? }) do
       with_stubbed_new(Ai::Director, director) do
-        run_services(commons:, pixabay:, planner:, videos:, ranker:, verifier:, rewriter:, articles:)
+        with_stubbed_new(Media::CommonsCategoryImages, categories) do
+          run_services(commons:, pixabay:, planner:, videos:, ranker:, verifier:, rewriter:, articles:)
+        end
       end
     end
   end
@@ -288,7 +312,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert_equal [ "Tesla moved to New York in 1884." ], plan[:research]["facts"]
     assert_equal [ "Tesla portrait 1890; article: Nikola Tesla" ], plan[:pictures]
     assert_equal [ "Nikola Tesla" ], articles.calls, "each article is fetched once, before and after planning"
-    assert_equal "wikipedia_article", @project.reload.scenes.first.images.first.provider
+    assert_includes @project.reload.scenes.first.images.map(&:provider), "wikipedia_article"
   end
 
   test "without stored research, the Director researches itself" do
@@ -764,7 +788,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert_equal [], @project.scenes.second.plan["articles"]
   end
 
-  test "a scene's own article pictures come first, and keyword search is skipped when they are enough" do
+  test "a scene's own article pictures come first, and keyword search still runs" do
     own = (1..5).map { |i| article_picture("Smiljan_#{i}") }
     articles = FakeArticles.new({ "Smiljan" => own, "Nikola Tesla" => [ article_picture("Tesla_portrait") ] })
     commons = CountingSearch.new
@@ -777,10 +801,11 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert_equal "wikipedia_article", scene.selected_image.provider
     assert_equal "Nikola Tesla", scene.selected_image.source_article
     assert_equal [ "Nikola Tesla", "Smiljan" ], articles.calls
-    assert_not commons.queries.include?("Tesla 1")
+    assert_includes commons.queries, "Tesla 1"
+    assert_includes scene.images.pluck(:image_url), "https://img.example/tesla-1.jpg"
   end
 
-  test "library pictures that share words with a scene join its pool, and keyword search fills in when short" do
+  test "library pictures that share words with a scene join its pool beside the keyword search" do
     portrait = article_picture("Tesla_portrait", description: "Portrait of Nikola Tesla")
     commons = CountingSearch.new
     planner = FakePlanner.new(articles: [ "Nikola Tesla" ])
@@ -789,9 +814,40 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
     scene = @project.reload.scenes.first
     urls = scene.images.order(:id).pluck(:image_url)
-    assert_equal portrait.image_url, urls.first
+    assert_includes urls, portrait.image_url
     assert_includes urls, "https://img.example/tesla-1.jpg"
     assert_includes commons.queries, "Tesla 1"
+  end
+
+  test "an article's Commons category pictures join its own pictures in the library" do
+    archive = article_picture("Smiljan_church_1890").with(provider: "commons_category", source_article: "Smiljan")
+    articles = FakeArticles.new({ "Smiljan" => [ article_picture("Smiljan_1") ] })
+    planner = FakePlanner.new(beat_articles: { 1 => [ "Smiljan" ] })
+
+    run_job(planner: planner, articles: articles, categories: FakeCategories.new({ "Smiljan" => [ archive ] }))
+
+    urls = @project.reload.scenes.first.images.pluck(:image_url)
+    assert_includes urls, "https://upload.wikimedia.org/Smiljan_1.jpg"
+    assert_includes urls, archive.image_url
+  end
+
+  test "a Commons category that can't be read leaves the article's own pictures" do
+    articles = FakeArticles.new({ "Smiljan" => [ article_picture("Smiljan_1") ] })
+    planner = FakePlanner.new(beat_articles: { 1 => [ "Smiljan" ] })
+
+    run_job(planner: planner, articles: articles, categories: FakeCategories.new(error: Media::Error.new("wikidata.org responded with 500")))
+
+    assert_includes @project.reload.scenes.first.images.pluck(:image_url), "https://upload.wikimedia.org/Smiljan_1.jpg"
+  end
+
+  test "a hook scene looks for footage in its articles' Commons category first" do
+    videos = FakeVideoSearch.new(videos: [ video("smiljan") ])
+    planner = FakePlanner.new(beat_articles: { 1 => [ "Smiljan" ] })
+
+    run_job(planner: planner, videos: videos, categories: FakeCategories.new(videos: { "Smiljan" => %(deepcategory:"Smiljan") }))
+
+    assert_equal %(deepcategory:"Smiljan"), videos.queries.first
+    assert @project.reload.scenes.first.selected_image.video?
   end
 
   test "a library picture is still used only once per video" do
