@@ -53,7 +53,7 @@ module Ai
 
       Result.new(audio: audio, provider: PROVIDER, model: model, characters: text.length, cost_usd: cost_for(text.length))
     rescue OpenAI::Error, Faraday::Error => e
-      raise Error, "Speech generation failed: #{e.message}"
+      raise Ai::Error.from(e, "Speech generation failed")
     end
 
     private

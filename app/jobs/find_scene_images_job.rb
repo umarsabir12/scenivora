@@ -124,6 +124,8 @@ class FindSceneImagesJob < ApplicationJob
         scene.update!(search_query: plan.search_queries.first, plan: plan.to_h.except(:position))
       end
       true
+    rescue Ai::OutOfCredits
+      raise
     rescue Ai::Error => e
       Rails.logger.warn("Scene planning failed for project #{project.id}: #{e.message}")
       scenes&.each { |scene| scene.update!(search_error: PLANNING_FAILED) }
@@ -143,6 +145,8 @@ class FindSceneImagesJob < ApplicationJob
         Rails.logger.info("Director named articles that don't exist for project #{project.id}: #{plan.dropped_articles.inspect}")
       end
       [ plan.result, plan.facts ]
+    rescue Ai::OutOfCredits
+      raise
     rescue Ai::Error => e
       Rails.logger.warn("Director planning failed for project #{project.id}: #{e.message}; using the scene planner")
       nil
@@ -207,6 +211,8 @@ class FindSceneImagesJob < ApplicationJob
       project.api_usages.create!(provider: Ai::TextGenerator::PROVIDER, operation: "candidate_rank",
                                  units: result.total_tokens, cost_usd: result.cost_usd)
       scenes.each { |scene| apply_ranking(scene, result.kept.fetch(scene.position, [])) }
+    rescue Ai::OutOfCredits
+      raise
     rescue Ai::Error => e
       Rails.logger.warn("Candidate check failed for project #{project.id}: #{e.message}")
     end
@@ -267,6 +273,8 @@ class FindSceneImagesJob < ApplicationJob
         suggest_ai(scene, "No real picture fits. #{result.reason}".strip)
         nil
       end
+    rescue Ai::OutOfCredits
+      raise
     rescue Ai::Error => e
       Rails.logger.warn("Picture check failed for scene #{scene.id}: #{e.message}")
       scene.update!(media_check: nil, media_note: "The picture check failed. Review this scene yourself.")
@@ -296,6 +304,8 @@ class FindSceneImagesJob < ApplicationJob
 
       rank_candidates(project, only: retried)
       check_pictures(project, only: retried)
+    rescue Ai::OutOfCredits
+      raise
     rescue Ai::Error => e
       Rails.logger.warn("Second-chance search failed for project #{project.id}: #{e.message}")
     end
@@ -322,6 +332,8 @@ class FindSceneImagesJob < ApplicationJob
         when "swap" then swap_picture(project, scene, decision, verifier)
         end
       end
+    rescue Ai::OutOfCredits
+      raise
     rescue Ai::Error => e
       Rails.logger.warn("Storyboard review failed for project #{project.id}: #{e.message}")
     end
@@ -349,6 +361,8 @@ class FindSceneImagesJob < ApplicationJob
       else
         swap_failed(scene, "Director: #{decision.note} The replacement didn't pass the picture check.")
       end
+    rescue Ai::OutOfCredits
+      raise
     rescue Ai::Error => e
       Rails.logger.warn("Checking the Director's swap failed for scene #{scene.id}: #{e.message}")
       swap_failed(scene, "Director: #{decision.note}")
@@ -424,10 +438,13 @@ class FindSceneImagesJob < ApplicationJob
       []
     end
 
-    # Shares a word of 4+ letters with the query, compared on the first 5 letters ("flights" ~ "flight").
+    # Shares words of 4+ letters with the query, compared on the first 5 letters ("flights" ~ "flight"):
+    # two of them when the query has two, since one common word lets in footage from anywhere
+    # ("Inbound train at Science Park portal, 2020" for "Atlantic Avenue Elevated train").
     def relevant_title?(title, query)
-      stems = ->(text) { text.downcase.scan(/[[:alpha:]]{4,}/).reject { |word| Scene::STOPWORDS.include?(word) }.map { |word| word.first(5) } }
-      (stems.call(title) & stems.call(query)).any?
+      stems = ->(text) { text.downcase.scan(/[[:alpha:]]{4,}/).reject { |word| Scene::STOPWORDS.include?(word) }.map { |word| word.first(5) }.uniq }
+      wanted = stems.call(query)
+      wanted.any? && (stems.call(title) & wanted).size >= [ wanted.size, 2 ].min
     end
 
     # The pool: the best of the scene's own articles' pictures (the article and its Commons category),

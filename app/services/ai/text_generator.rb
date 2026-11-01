@@ -45,7 +45,7 @@ module Ai
 
       build_result(response)
     rescue OpenAI::Error, Faraday::Error => e
-      raise Error, "Text generation failed: #{e.message}"
+      raise Ai::Error.from(e, "Text generation failed")
     end
 
     private

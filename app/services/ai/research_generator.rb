@@ -39,7 +39,7 @@ module Ai
 
       build_result(client.responses.create(parameters: parameters))
     rescue OpenAI::Error, Faraday::Error => e
-      raise Ai::Error, "Research call failed: #{e.message}"
+      raise Ai::Error.from(e, "Research call failed")
     end
 
     private

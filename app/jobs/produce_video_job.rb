@@ -7,6 +7,8 @@ class ProduceVideoJob < ApplicationJob
 
   MAX_AI_IMAGES = 8
   FAILED = "Creating the video failed. Try again.".freeze
+  # The AI provider account (not the user's credits) has run out, so trying again now won't help.
+  OUT_OF_CREDITS = "The AI service is out of credit, so the video couldn't be made. Try again later.".freeze
 
   def perform(project)
     advance(project, "writing")
@@ -22,7 +24,8 @@ class ProduceVideoJob < ApplicationJob
     project.update!(status: :script_ready, settings: project.settings.merge("production" => { "step" => "done", "note" => note }.compact))
   rescue StandardError => e
     Rails.logger.error("Creating the video failed for project #{project.id}: #{e.class}: #{e.message}")
-    project.update!(settings: project.settings.merge("production" => { "step" => "failed", "error" => FAILED }))
+    error = e.is_a?(Ai::OutOfCredits) ? OUT_OF_CREDITS : FAILED
+    project.update!(settings: project.settings.merge("production" => { "step" => "failed", "error" => error }))
   ensure
     Turbo::StreamsChannel.broadcast_refresh_to([ project, :scenes ])
   end

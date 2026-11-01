@@ -619,6 +619,25 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert @project.reload.scenes.find_by(position: 1).images.none?(&:video?)
   end
 
+  test "a video whose title shares only one word with a longer query is not used" do
+    videos = FakeVideoSearch.new(videos: [ video("train", title: "Inbound train at Science Park portal, 2020"),
+                                           video("elevated", title: "Atlantic Avenue Elevated train, 1919") ])
+
+    run_job(planner: single_plan([ "Atlantic Avenue Elevated train" ]), videos: videos)
+
+    titles = @project.reload.scenes.find_by(position: 1).images.select(&:video?).map(&:image_url)
+    assert_equal [ "https://upload.wikimedia.org/elevated.webm" ], titles
+  end
+
+  test "when the AI provider is out of credit the run stops instead of keeping unchecked pictures" do
+    ranker = FakeRanker.new(error: Ai::OutOfCredits.new("Text generation failed: 429"))
+    verifier = FakeVerifier.new
+
+    assert_raises(Ai::OutOfCredits) { run_job(ranker: ranker, verifier: verifier) }
+    assert_equal 0, verifier.calls
+    assert_nil @project.reload.settings["scenes_searching"]
+  end
+
   test "videos use only the planner's own queries, not broadened ones" do
     videos = FakeVideoSearch.new(videos: [])
 

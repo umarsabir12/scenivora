@@ -55,7 +55,7 @@ module Ai
       Result.new(image: Base64.decode64(encoded), content_type: "image/png", provider: PROVIDER, model: model,
                  cost_usd: cost_for(response.fetch("usage", {})))
     rescue OpenAI::Error, Faraday::Error => e
-      raise Error, "Image generation failed: #{e.message}"
+      raise Ai::Error.from(e, "Image generation failed")
     end
 
     private

@@ -76,6 +76,8 @@ class ScriptWriter
       end
       Ai::TextGenerator::Result.new(text: results.last.text, provider: results.last.provider, model: results.last.model,
                                     total_tokens: results.sum(&:total_tokens), cost_usd: results.sum(&:cost_usd))
+    rescue Ai::OutOfCredits
+      raise
     rescue Ai::Error => e
       Rails.logger.warn("Script from research failed for project #{project.id}: #{e.message}; writing from the brief")
       nil
@@ -102,6 +104,8 @@ class ScriptWriter
       end
       project.update!(settings: project.settings.merge("research" => research.to_settings(key)))
       project.settings["research"]
+    rescue Ai::OutOfCredits
+      raise
     rescue Ai::Error => e
       Rails.logger.warn("Research failed for project #{project.id}: #{e.message}; writing the script from the brief")
       nil

@@ -110,6 +110,12 @@ class ProduceVideoJobTest < ActiveJob::TestCase
     assert_equal 0, @searches
   end
 
+  test "says so when the AI provider is out of credit" do
+    produce(writer: FakeWriter.new(error: Ai::OutOfCredits.new("Text generation failed: 429")))
+
+    assert_equal ProduceVideoJob::OUT_OF_CREDITS, @project.reload.settings.dig("production", "error")
+  end
+
   test "start_production! starts one run at a time" do
     @project.update!(status: :script_ready, settings: {})
 
