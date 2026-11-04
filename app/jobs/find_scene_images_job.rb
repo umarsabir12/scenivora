@@ -15,6 +15,8 @@ class FindSceneImagesJob < ApplicationJob
   # pictures, so one big article can't crowd out what a search finds. Places one source can't fill go
   # to the others.
   POOL_SHARES = { own: 6, searched: 4, matched: 2 }.freeze
+  # Scenes the picture scout searches per run, which caps its cost (about 1-2 cents a scene).
+  MAX_SCOUTED = 10
   RESEARCH_PICTURES_PER_ARTICLE = 6
   # Opening on footage holds viewers better than a still, so the first scenes look for video first.
   HOOK_SCENES = 2
@@ -283,33 +285,38 @@ class FindSceneImagesJob < ApplicationJob
       nil
     end
 
-    # Scenes still without a picture get new, archive-style queries (one call for all of them), and are
-    # searched, ranked and checked once more. Scenes that still find nothing keep their AI suggestion.
+    # Scenes still without a picture get a search agent of their own (Ai::PictureScout), hook scenes
+    # first and at most MAX_SCOUTED per run. Its choice is checked like any other candidate; scenes it
+    # finds nothing for keep their AI suggestion.
     def second_chance(project)
       waiting = project.scenes.reload.select { |scene| scene.ai_suggested? && scene.images.none?(&:stored_file?) }
       return if waiting.empty?
 
-      result = Ai::QueryRewriter.new.call(topic: project.prompt, scenes: waiting)
-      project.api_usages.create!(provider: Ai::TextGenerator::PROVIDER, operation: "query_rewrite",
-                                 units: result.total_tokens, cost_usd: result.cost_usd)
-
-      retried = waiting.select do |scene|
-        queries = result.queries.fetch(scene.position, [])
-        next false if queries.empty?
-
-        scene.update!(search_query: queries.first, search_error: nil, media_check: nil, media_note: nil,
-                      plan: scene.plan.merge("search_queries" => queries))
-        find_images(scene, use_library: false)
-        true
+      scout = Ai::PictureScout.new(articles: @article_images)
+      verifier = Ai::ImageVerifier.new
+      used = project.scenes.filter_map { |scene| scene.selected_image&.image_url }
+      waiting.first(MAX_SCOUTED).each do |scene|
+        chosen = scout_scene(project, scene, scout, verifier, used)
+        used << chosen.image_url if chosen
       end
-      return if retried.empty?
+    end
 
-      rank_candidates(project, only: retried)
-      check_pictures(project, only: retried)
+    def scout_scene(project, scene, scout, verifier, used)
+      result = scout.call(scene: scene, used_urls: used)
+      project.api_usages.create!(provider: Ai::PictureScout::PROVIDER, operation: "picture_scout",
+                                 units: result.total_tokens, cost_usd: result.cost_usd)
+      return unless result.choice
+
+      found = result.choice
+      media = scene.images.create!(provider: found.provider, image_url: found.image_url, page_url: found.page_url,
+                                   credit: found.credit, license: found.license, description: found.description,
+                                   taken_on: found.taken_on, categories: found.categories, source_article: found.source_article)
+      check_scene(project, scene, [ media ], verifier)
     rescue Ai::OutOfCredits
       raise
     rescue Ai::Error => e
-      Rails.logger.warn("Second-chance search failed for project #{project.id}: #{e.message}")
+      Rails.logger.warn("Picture scout failed for scene #{scene.id}: #{e.message}")
+      nil
     end
 
     def suggest_ai(scene, note)

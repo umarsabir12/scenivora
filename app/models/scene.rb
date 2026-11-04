@@ -43,8 +43,8 @@ class Scene < ApplicationRecord
     media_check == "ai_suggested"
   end
 
-  # The prompt an AI image starts from: the Director's prompt when it wrote one, else the plan's
-  # description of what the viewer should see.
+  # The prompt an AI image starts from: one written into the plan (older storyboard reviews wrote
+  # them), else the plan's description of what the viewer should see.
   def suggested_ai_prompt
     plan["ai_prompt"].presence || plan["visual_intent"].presence || text
   end

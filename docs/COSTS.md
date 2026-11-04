@@ -62,22 +62,23 @@ length, or several hundred scripts with no voice-over.
 
 ## Checking pictures
 
+- **Scene plan from research:** projects researched before their script (every Create video
+  project) are planned by `gpt-4o-mini` from that research, under a cent. The Director's plan
+  below is only used for projects without research.
 - **Director (research and plan):** one call per project with `gpt-5.5` and OpenAI web search
   limited to Wikipedia. Measured $0.26 for 12 scenes (28k tokens, 3 searches, 67 s). Prices:
   $5 per 1M input tokens, $30 per 1M output tokens (reasoning counts as output), $10 per 1,000
   searches. Compared on the same project: `gpt-5-mini` $0.10, `gpt-4.1` $0.05, but neither planned
   as well (gpt-4.1 never named the key articles). Not used in "AI images for every scene" mode.
-  When the script was written from research, the plan reads that research and doesn't search,
-  estimated about $0.18 for 12 scenes (to be measured).
-- **Director (storyboard review):** one call per project with up to 12 small previews and low
-  reasoning effort. Measured $0.05 for 12 scenes (5,800 tokens, 30 s), plus about $0.001 for each
-  swapped picture's check.
 - **Relevance check:** one text call per project, measured $0.0006 for 14 scenes.
 - **Wikipedia article pictures:** free (no key, no AI); one request per article, up to about 18 per video.
 - **Picture check:** one call per scene with up to 6 small previews (3 before October 2026), estimated
   $0.002 per scene, about double the 3-preview check ($0.001, about 6,400 tokens). About $0.05 for a
   5-minute video.
-- **Second-chance queries:** one text call for the scenes without a picture, plus their re-checks.
+- **Picture scout:** a small `gpt-5-mini` search agent for each scene still without a picture
+  (at most 10 per run), up to 6 model calls with low-detail previews. Estimated 1-2 cents a scene
+  (to be measured), plus about $0.002 for the picture check of its choice. It replaced the Director's
+  storyboard review (measured $0.05-0.16) and the second-chance query rewrite.
 - **Measured on a 10-scene project (Panama Canal):** the whole fetch, including planner, relevance
   check, picture checks and second chance, cost $0.0145 and took about 3.5 minutes.
 

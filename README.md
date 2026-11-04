@@ -93,7 +93,8 @@ from the real environment. `.env.example` lists every setting.
 | `OPENAI_API_KEY`     | Yes, for AI features | none   | Authenticates every OpenAI request                   |
 | `OPENAI_TEXT_MODEL`  | No       | `gpt-4o-mini` | Model used to write scripts                          |
 | `OPENAI_SPEECH_MODEL`| No       | `tts-1`       | Model used for narration and voice samples           |
-| `OPENAI_DIRECTOR_MODEL` | No    | `gpt-5.5`     | The Director, which researches and plans scene pictures; `off` uses the cheap planner |
+| `OPENAI_DIRECTOR_MODEL` | No    | `gpt-5.5`     | The research before the script, and the Director that plans projects without research; `off` turns both off |
+| `OPENAI_SCOUT_MODEL` | No    | `gpt-5-mini`  | The picture scout, a small search agent for scenes still without a picture |
 | `OPENAI_IMAGE_MODEL` | No       | `gpt-image-1-mini` | Model used for AI scene images                  |
 | `CREDITS_PER_AI_IMAGE` | No     | `5` (placeholder) | Credits charged per AI image                     |
 | `FFMPEG_BIN`, `FFPROBE_BIN` | No | ffmpeg-full if installed, else `ffmpeg`/`ffprobe` on PATH | Which ffmpeg build to use |
@@ -190,7 +191,7 @@ the providers, downloads and ffmpeg are replaced with fakes.
   the YouTube details (`yt_title`, `yt_description`, `yt_tags`, `yt_category`).
 - `CreditTransaction`: every change to a user's credit balance.
 - `ApiUsage`: one row per paid API call batch (provider, operation, units, estimated cost).
-  Operations: `research`, `script`, `voice`, `director_plan`, `scene_plan`, `director_review`, `ai_image`, `metadata`.
+  Operations: `research`, `script`, `voice`, `director_plan`, `scene_plan`, `candidate_rank`, `image_check`, `picture_scout`, `ai_image`, `metadata`.
 
 ### Create video
 
@@ -231,9 +232,8 @@ before the storyboard keep the old order (script → voice → scenes).
 3. If research or the strong model fails, or the Director is `off`, `Ai::TextGenerator`
    (`gpt-4o-mini`) writes from the brief alone, as before.
 
-It saves the next `Script` version and records `research` and `script` usage. Later, the
-Director's scene plan reads the same research (and the pictures found in its articles) instead
-of searching again.
+It saves the next `Script` version and records `research` and `script` usage. Later, the scene
+plan reads the same research (and the pictures found in its articles) instead of searching again.
 
 ### Scene images (step 3)
 
@@ -244,12 +244,15 @@ of searching again.
 
 `FindSceneImagesJob` (real photos first) runs in this order:
 1. Splits the confirmed narration into scenes of about 10 seconds (`NarrationScenes`, no API calls).
-2. **The Director** (`Ai::Director`, one call with `OPENAI_DIRECTOR_MODEL`, about $0.26) first
-   researches the real history on Wikipedia with OpenAI web search (at most 8 searches, Wikipedia
-   only), then plans every scene. Its facts are saved in `project.settings["facts"]`, and every
-   article title it names is checked against Wikipedia (`Media::WikipediaTitles`, free); titles that
-   don't exist are dropped. If the Director fails, or every scene will be an AI image, the cheap
-   planner (`Ai::ScenePlanner`) plans instead. A plan writes search queries per scene, whether it
+2. **The plan.** A project researched before its script (every **Create video** project) is planned
+   by the cheap planner (`Ai::ScenePlanner`, `gpt-4o-mini`, under a cent) from that research: its
+   facts, checked article titles, visual subjects and a few pictures from each article. It may only
+   name the research's articles; others are dropped. The research facts are saved in
+   `project.settings["facts"]`. A project without research is planned by **the Director**
+   (`Ai::Director`, one call with `OPENAI_DIRECTOR_MODEL`, about $0.26), which first researches the
+   real history on Wikipedia with OpenAI web search (at most 8 searches), and whose article titles
+   are checked against Wikipedia (`Media::WikipediaTitles`, free). If the Director fails, or every
+   scene will be an AI image, the cheap planner plans from the narration alone. A plan writes search queries per scene, whether it
    prefers video, and what the viewer should see. It also names up to 6 exact English Wikipedia articles for the
    topic (saved in `project.settings["articles"]`) and 0-2 per scene (in `scene.plan["articles"]`).
    If planning fails, the scenes ask to retry and nothing is searched.
@@ -278,15 +281,16 @@ of searching again.
    era, without large watermarks or burned-in text. A kept picture is marked **✓ Checked**. If none
    passes, the scene's picture is deselected and the scene is marked **AI image suggested**, so nothing
    unchecked reaches the video. If the check itself fails, the scene is marked for manual review.
-7. **Second chance** (`Ai::QueryRewriter`, one text call): scenes still without a picture get new
-   archive-style queries and are searched (keyword search only, since they already saw the library),
-   ranked and checked once more.
-8. **Storyboard review** (`Ai::Director#review`, one call, about $0.05): the Director looks at every
-   scene's picture together (small previews), with its facts, and keeps, swaps (to another
-   candidate, which must still pass the picture check) or rejects each one. For scenes left
-   without a picture it writes an AI image prompt (`scene.plan["ai_prompt"]`), which the AI
-   generate tab starts from. Scenes the user chose or uploaded are never changed. If the review
-   fails, the checked pictures stay.
+7. **Picture scout** (`Ai::PictureScout`, `OPENAI_SCOUT_MODEL`, default `gpt-5-mini`, about 1-2
+   cents a scene): each scene still without a picture (at most 10 per run, hook scenes first) gets a
+   small search agent. It has three tools: a Commons search, an article's pictures and Commons
+   category, and a look at up to 6 previews. It searches with short archive-style queries, looks
+   before choosing, and has at most 6 model calls. It may only choose a picture it found and looked
+   at, and its choice still goes through the picture check. Scenes it finds nothing for keep their
+   AI suggestion.
+
+If the AI provider's account runs out of credit, the run stops (`Ai::OutOfCredits`) instead of
+keeping unchecked pictures, and **Create video** says so.
 
 A picture is used once per video, whichever source it came from.
 

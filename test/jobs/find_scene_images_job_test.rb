@@ -183,7 +183,22 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     end
   end
 
-  # Stands in for the second-chance query writer: no new queries unless given some.
+  # Stands in for the picture scout: finds nothing unless told what to choose for a scene.
+  class FakeScout
+    attr_reader :calls
+
+    def initialize(choose: ->(_scene) { nil })
+      @choose = choose
+      @calls = []
+    end
+
+    def call(scene:, used_urls: [])
+      @calls << { position: scene.position, used_urls: used_urls.dup }
+      Ai::PictureScout::Result.new(choice: @choose.call(scene), reason: "Found it.", total_tokens: 30_000,
+                                   cost_usd: BigDecimal("0.012"))
+    end
+  end
+
   class FakeRewriter
     attr_reader :calls
 
@@ -200,18 +215,18 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
   end
 
   def run_job(commons: FakeSearch.new, pixabay: nil, planner: FakePlanner.new, videos: FakeVideoSearch.new, ranker: FakeRanker.new,
-              verifier: FakeVerifier.new, rewriter: FakeRewriter.new, articles: FakeArticles.new, director: nil,
+              verifier: FakeVerifier.new, scout: FakeScout.new, articles: FakeArticles.new, director: nil,
               categories: FakeCategories.new)
     with_stubbed_method(Ai::Director, :enabled?, -> { !director.nil? }) do
       with_stubbed_new(Ai::Director, director) do
         with_stubbed_new(Media::CommonsCategoryImages, categories) do
-          run_services(commons:, pixabay:, planner:, videos:, ranker:, verifier:, rewriter:, articles:)
+          run_services(commons:, pixabay:, planner:, videos:, ranker:, verifier:, scout:, articles:)
         end
       end
     end
   end
 
-  def run_services(commons:, pixabay:, planner:, videos:, ranker:, verifier:, rewriter:, articles:)
+  def run_services(commons:, pixabay:, planner:, videos:, ranker:, verifier:, scout:, articles:)
     with_stubbed_new(Media::CommonsSearch, commons) do
       with_stubbed_new(Media::WikipediaArticleImages, articles) do
         with_stubbed_new(Media::CommonsVideoSearch, videos) do
@@ -219,7 +234,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
             with_stubbed_new(Ai::ScenePlanner, planner) do
               with_stubbed_new(Ai::CandidateRanker, ranker) do
                 with_stubbed_new(Ai::ImageVerifier, verifier) do
-                  with_stubbed_new(Ai::QueryRewriter, rewriter) do
+                  with_stubbed_new(Ai::PictureScout, scout) do
                     FindSceneImagesJob.perform_now(@project)
                   end
                 end
@@ -623,26 +638,53 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert_equal FindSceneImagesJob::POOL_SIZE, scene.images.count
   end
 
-  test "scenes left without a picture get new queries and are searched and checked once more" do
-    search = PickySearch.new(found: [ "Culebra Cut steam shovel" ])
-    rewriter = FakeRewriter.new(queries: [ "Culebra Cut steam shovel" ])
-
-    run_job(commons: search, planner: single_plan([ "Panama Canal workers digging" ]), rewriter: rewriter)
-
-    scene = @project.reload.scenes.first
-    assert_equal 1, rewriter.calls
-    assert_equal "verified", scene.media_check
-    assert_equal "Culebra Cut steam shovel", scene.search_query
-    assert scene.selected_image.image_url.include?("culebra-cut")
-    assert @project.api_usages.where(operation: "query_rewrite").exists?
+  def scout_find(name)
+    Media::ImageResult.new(provider: "commons_category", image_url: "https://upload.wikimedia.org/#{name}.jpg",
+                           page_url: "https://commons.wikimedia.org/wiki/File:#{name}.jpg", credit: "City Archives",
+                           license: "Public domain", source_article: "Panama Canal")
   end
 
-  test "the second chance isn't used when every scene already has a picture" do
-    rewriter = FakeRewriter.new(queries: [ "anything" ])
+  test "a scene left without a picture gets the scout, and its checked choice is selected and credited" do
+    scout = FakeScout.new(choose: ->(scene) { scout_find("Culebra_Cut_1913") if scene.position == 1 })
 
-    run_job(rewriter: rewriter)
+    run_job(commons: PickySearch.new(found: []), planner: single_plan([ "Panama Canal workers digging" ]), scout: scout)
 
-    assert_equal 0, rewriter.calls
+    scene = @project.reload.scenes.first
+    assert_equal "verified", scene.media_check
+    assert_equal "https://upload.wikimedia.org/Culebra_Cut_1913.jpg", scene.selected_image.image_url
+    assert_equal "City Archives", scene.selected_image.credit
+    assert_equal "commons_category", scene.selected_image.provider
+    assert_equal BigDecimal("0.012") * scout.calls.size, @project.api_usages.where(operation: "picture_scout").sum(:cost_usd)
+    assert @project.scenes.drop(1).all?(&:ai_suggested?), "scenes the scout found nothing for keep their AI suggestion"
+  end
+
+  test "a scout choice that fails the picture check leaves the AI suggestion" do
+    scout = FakeScout.new(choose: ->(_scene) { scout_find("Modern_canal_2019") })
+    verifier = FakeVerifier.new(choose: ->(candidates) { candidates.first.image_url.include?("Modern") ? nil : candidates.first.id })
+
+    run_job(commons: PickySearch.new(found: []), scout: scout, verifier: verifier)
+
+    assert @project.reload.scenes.all?(&:ai_suggested?)
+  end
+
+  test "the scout is told which pictures other scenes already show, including its own earlier finds" do
+    scout = FakeScout.new(choose: ->(scene) { scout_find("Find_#{scene.position}") })
+
+    run_job(commons: PickySearch.new(found: [ "Tesla 1" ]), scout: scout)
+
+    picked = @project.reload.scenes.first.selected_image.image_url
+    first, second = scout.calls
+    assert_equal 2, first[:position]
+    assert_includes first[:used_urls], picked
+    assert_includes second[:used_urls], "https://upload.wikimedia.org/Find_2.jpg"
+  end
+
+  test "the scout isn't used when every scene already has a picture" do
+    scout = FakeScout.new
+
+    run_job(scout: scout)
+
+    assert_empty scout.calls
   end
 
   test "a picture is used in only one scene" do
