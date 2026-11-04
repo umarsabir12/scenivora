@@ -70,30 +70,16 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
   # Stands in for the Director: plans like the given planner, with facts, or fails when told to.
   class FakeDirector
-    attr_reader :calls, :reviews, :plans
+    attr_reader :calls
 
-    # decide: scene => Ai::Director::Decision (or nil to say nothing about it); keeps everything by default.
-    def initialize(planner: FakePlanner.new(articles: [ "Nikola Tesla" ]), error: nil, decide: nil, review_error: nil)
+    def initialize(planner: FakePlanner.new(articles: [ "Nikola Tesla" ]), error: nil)
       @planner = planner
       @error = error
-      @decide = decide
-      @review_error = review_error
       @calls = 0
-      @reviews = []
-      @plans = []
     end
 
-    def review(topic:, scenes:, facts:, fixed: [])
-      @reviews << { facts: facts, fixed: fixed }
-      raise @review_error if @review_error
-
-      decisions = scenes.to_h { |scene| [ scene.position, @decide&.call(scene) ] }.compact
-      Ai::Director::Review.new(decisions: decisions, total_tokens: 9_000, cost_usd: BigDecimal("0.12"))
-    end
-
-    def plan(topic:, scenes:, research: nil, pictures: [])
+    def plan(topic:, scenes:)
       @calls += 1
-      @plans << { research: research, pictures: pictures }
       raise @error if @error
 
       result = @planner.call(topic: topic, scenes: scenes).with(total_tokens: 28_000, cost_usd: BigDecimal("0.26"))
@@ -103,7 +89,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
   # Stands in for the scene planner, so no test makes a paid call. Counts how often it is called.
   class FakePlanner
-    attr_reader :calls
+    attr_reader :calls, :received
 
     def initialize(error: nil, plans: nil, queries: nil, topic_depiction: "normal", articles: [], beat_articles: {})
       @error = error
@@ -115,8 +101,9 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
       @calls = 0
     end
 
-    def call(topic:, scenes:)
+    def call(topic:, scenes:, research: nil, pictures: [])
       @calls += 1
+      @received = { research: research, pictures: pictures }
       raise @error if @error
 
       plans = @plans || scenes.to_h do |scene|
@@ -299,29 +286,23 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert @project.scenes.all? { |scene| scene.search_query.present? }
   end
 
-  test "with stored research, the Director plans from it and is shown the pictures its articles have" do
+  test "with stored research, the cheap planner plans from it, sees its pictures, and the Director isn't paid" do
     @project.update!(settings: { "research" => { "key" => "k", "facts" => [ "Tesla moved to New York in 1884." ],
                                                   "articles" => [ "Nikola Tesla" ], "visual_subjects" => [] } })
     portrait = article_picture("Tesla_portrait_1890", description: "Portrait")
     articles = FakeArticles.new({ "Nikola Tesla" => [ portrait ] })
+    planner = FakePlanner.new
     director = FakeDirector.new
 
-    run_job(director: director, articles: articles)
+    run_job(planner: planner, director: director, articles: articles)
 
-    plan = director.plans.first
-    assert_equal [ "Tesla moved to New York in 1884." ], plan[:research]["facts"]
-    assert_equal [ "Tesla portrait 1890; article: Nikola Tesla" ], plan[:pictures]
+    assert_equal 0, director.calls
+    assert_equal [ "Tesla moved to New York in 1884." ], planner.received[:research]["facts"]
+    assert_equal [ "Tesla portrait 1890; article: Nikola Tesla" ], planner.received[:pictures]
+    assert_equal [ "Tesla moved to New York in 1884." ], @project.reload.settings["facts"]
     assert_equal [ "Nikola Tesla" ], articles.calls, "each article is fetched once, before and after planning"
-    assert_includes @project.reload.scenes.first.images.map(&:provider), "wikipedia_article"
-  end
-
-  test "without stored research, the Director researches itself" do
-    director = FakeDirector.new
-
-    run_job(director: director)
-
-    assert_nil director.plans.first[:research]
-    assert_empty director.plans.first[:pictures]
+    assert_includes @project.scenes.first.images.map(&:provider), "wikipedia_article"
+    assert_nil @project.api_usages.find_by(operation: "director_plan")
   end
 
   test "when the Director fails, the scene planner plans instead" do
@@ -345,91 +326,6 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
     assert_equal 0, director.calls
     assert @project.api_usages.find_by(operation: "scene_plan")
-  end
-
-  def decision(action, candidate_id: nil, note: "Wrong era.", ai_prompt: nil)
-    Ai::Director::Decision.new(action: action, candidate_id: candidate_id, note: note, ai_prompt: ai_prompt)
-  end
-
-  test "the Director reviews the storyboard with its facts, and its cost is recorded" do
-    director = FakeDirector.new
-
-    run_job(director: director)
-
-    assert_equal 1, director.reviews.size
-    assert_equal [ "Tesla was born in Smiljan in 1856." ], director.reviews.first[:facts]
-    assert_equal BigDecimal("0.12"), @project.api_usages.find_by(operation: "director_review").cost_usd
-    assert @project.reload.scenes.all? { |scene| scene.media_check == "verified" }
-  end
-
-  test "a picture the Director rejects makes way for an AI image with the Director's prompt" do
-    reject_first = ->(scene) { decision("reject", ai_prompt: "Tesla's birth house in Smiljan, 1850s engraving") if scene.position == 1 }
-
-    run_job(director: FakeDirector.new(decide: reject_first))
-
-    scene = @project.reload.scenes.first
-    assert scene.ai_suggested?
-    assert_nil scene.selected_image
-    assert_equal "Director: Wrong era.", scene.media_note
-    assert_equal "Tesla's birth house in Smiljan, 1850s engraving", scene.suggested_ai_prompt
-    assert_equal "verified", @project.scenes.second.media_check
-  end
-
-  test "a candidate the Director swaps in is selected once it passes the picture check" do
-    swap_first = lambda do |scene|
-      next unless scene.position == 1
-
-      other = scene.images.reject(&:selected?).first
-      decision("swap", candidate_id: other.id, note: "The other photo shows Smiljan.")
-    end
-    commons = PickySearch.new(found: [ "Tesla 1" ])
-
-    run_job(commons: commons, director: FakeDirector.new(decide: swap_first))
-
-    scene = @project.reload.scenes.first
-    assert_equal "verified", scene.media_check
-    assert_equal "Director: The other photo shows Smiljan.", scene.media_note
-    assert_equal "https://img.example/tesla-1-1.jpg", scene.selected_image.image_url
-  end
-
-  test "a swapped-in candidate that fails the picture check leaves the checked picture in place" do
-    swap_first = ->(scene) { decision("swap", candidate_id: scene.images.reject(&:selected?).first.id) if scene.position == 1 }
-    first_pick = nil
-    verifier = FakeVerifier.new(choose: lambda { |candidates|
-      first_pick ||= candidates.first.id
-      candidates.size == 1 && candidates.first.id != first_pick ? nil : candidates.first.id
-    })
-
-    run_job(commons: PickySearch.new(found: [ "Tesla 1" ]), director: FakeDirector.new(decide: swap_first), verifier: verifier)
-
-    scene = @project.reload.scenes.first
-    assert_equal "verified", scene.media_check
-    assert_equal first_pick, scene.selected_image.id
-    assert_match "didn't pass the picture check. The checked picture stays.", scene.media_note
-  end
-
-  test "a swap to a picture another scene shows leaves the checked picture in place" do
-    swap_first = lambda do |scene|
-      next unless scene.position == 1
-
-      shown = scene.project.scenes.find_by(position: 2).selected_image
-      copy = scene.images.create!(provider: "wikimedia_commons", image_url: shown.image_url, page_url: shown.page_url)
-      decision("swap", candidate_id: copy.id, note: "Use the other scene's photo.")
-    end
-
-    run_job(director: FakeDirector.new(decide: swap_first))
-
-    scene = @project.reload.scenes.first
-    assert_equal "verified", scene.media_check
-    assert scene.selected_image
-    assert_equal "Director: Use the other scene's photo. The checked picture stays.", scene.media_note
-  end
-
-  test "if the storyboard review fails, the checked pictures stay" do
-    run_job(director: FakeDirector.new(review_error: Ai::Error.new("Research call failed: timeout")))
-
-    assert @project.reload.scenes.all? { |scene| scene.media_check == "verified" }
-    assert_nil @project.api_usages.find_by(operation: "director_review")
   end
 
   test "an unchanged script reuses the existing plan instead of calling the planner again" do
@@ -577,7 +473,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
   test "a scene the planner marks for video gets video even when it isn't a hook scene" do
     planner = FakePlanner.new(plans: nil)
-    planner.define_singleton_method(:call) do |topic:, scenes:|
+    planner.define_singleton_method(:call) do |topic:, scenes:, **|
       plans = scenes.to_h do |scene|
         [ scene.position, Ai::ScenePlanner::Plan.new(position: scene.position, visual_intent: "x", subject_type: "historical_event",
             search_queries: [ "Partition #{scene.position}" ], ai_fallback_allowed: true, prefer: "video") ]
@@ -766,7 +662,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
   test "the planner's topic-wide depiction rule is saved and applies to every scene" do
     planner = FakePlanner.new
-    planner.define_singleton_method(:call) do |topic:, scenes:|
+    planner.define_singleton_method(:call) do |topic:, scenes:, **|
       plans = scenes.to_h do |scene|
         [ scene.position, Ai::ScenePlanner::Plan.new(position: scene.position, visual_intent: "x", subject_type: "historical_event",
             search_queries: [ "Yarmouk #{scene.position}" ], ai_fallback_allowed: true) ]

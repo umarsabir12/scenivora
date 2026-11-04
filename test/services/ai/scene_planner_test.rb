@@ -31,6 +31,35 @@ class Ai::ScenePlannerTest < ActiveSupport::TestCase
     [ Ai::ScenePlanner.new(generator: generator), generator ]
   end
 
+  test "with research, plans from its facts and pictures, and names only its checked articles" do
+    answer = { articles: [ "HMS Calypso (D61)", "Invented Article" ],
+               beats: [ { beat: 1, search_queries: [ "HMS Calypso 1922" ], articles: [ "HMS Calypso (D61)", "Made Up Ship" ] } ] }.to_json
+    planner, generator = planner_for(answer)
+    research = { "facts" => [ "HMS Calypso evacuated the family in December 1922." ], "articles" => [ "Prince Philip, Duke of Edinburgh" ],
+                 "visual_subjects" => [ { "name" => "HMS Calypso", "kind" => "ship", "article" => "HMS Calypso (D61)", "year" => "1922" } ] }
+
+    result = planner.call(topic: "Prince Philip", scenes: beats, research: research,
+                          pictures: [ "HMS Calypso; taken 1919; article: HMS Calypso (D61)" ])
+
+    call = generator.calls.first
+    assert_includes call[:system_prompt], "The topic has been researched already"
+    assert_includes call[:user_prompt], "- HMS Calypso evacuated the family in December 1922."
+    assert_includes call[:user_prompt], "- HMS Calypso (article: HMS Calypso (D61)) 1922"
+    assert_includes call[:user_prompt], "Articles: Prince Philip, Duke of Edinburgh; HMS Calypso (D61)"
+    assert_includes call[:user_prompt], "- HMS Calypso; taken 1919; article: HMS Calypso (D61)"
+    assert_equal [ "HMS Calypso (D61)" ], result.articles
+    assert_equal [ "HMS Calypso (D61)" ], result.plans[1].articles
+  end
+
+  test "without research, plans from the narration alone" do
+    planner, generator = planner_for('{"beats": []}')
+
+    planner.call(topic: "Nikola Tesla", scenes: beats)
+
+    assert_not_includes generator.calls.first[:system_prompt], "researched already"
+    assert_not_includes generator.calls.first[:user_prompt], "Research facts"
+  end
+
   test "asks for JSON and sends the topic and each beat with its duration" do
     planner, generator = planner_for('{"beats": []}')
 

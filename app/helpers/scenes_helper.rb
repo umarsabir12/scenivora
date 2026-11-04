@@ -44,14 +44,15 @@ module ScenesHelper
   end
 
   # Estimate for the planning call, before it runs: the Director's research when real pictures are
-  # wanted, the scene planner otherwise. Scenes are about 10 seconds each.
+  # wanted and the project has no research yet, the scene planner otherwise. Scenes are about 10
+  # seconds each.
   def planner_estimate_label(project, track)
     return "—" unless project.latest_script && track&.duration_ms
 
     scene_count = [ (track.duration_ms / 10_000.0).round, 1 ].max
     estimate =
-      if Ai::Director.enabled? && project.image_mode != "ai_all"
-        Ai::Director.estimated_cost(scene_count, researched: project.settings["research"].present?)
+      if Ai::Director.enabled? && project.image_mode != "ai_all" && project.settings["research"].blank?
+        Ai::Director.estimated_cost(scene_count)
       else
         Ai::ScenePlanner.estimated_cost(project.latest_script.body, scene_count)
       end

@@ -68,27 +68,6 @@ class Ai::DirectorTest < ActiveSupport::TestCase
     assert_includes generator.args[:input], "Beat 1 (10.0 s): The baby left Greece on a ship."
   end
 
-  test "with research, plans from it without searching, and keeps the research facts" do
-    generator = FakeGenerator.new(answer)
-    research = { "facts" => [ "HMS Calypso evacuated the family in December 1922." ], "articles" => [ "HMS Calypso (D61)" ],
-                 "visual_subjects" => [ { "name" => "HMS Calypso", "kind" => "ship", "article" => "HMS Calypso (D61)", "year" => "1922" } ] }
-
-    plan = Ai::Director.new(generator: generator, titles: FakeTitles.new(real_titles))
-                       .plan(topic: "Prince Philip", scenes: scenes, research: research, pictures: [ "HMS Calypso; taken 1919; article: HMS Calypso (D61)" ])
-
-    assert_nil generator.args[:domains]
-    assert_includes generator.args[:instructions], "The topic has been researched already"
-    assert_includes generator.args[:input], "- HMS Calypso evacuated the family in December 1922."
-    assert_includes generator.args[:input], "- HMS Calypso (article: HMS Calypso (D61)) 1922"
-    assert_includes generator.args[:input], "- HMS Calypso; taken 1919; article: HMS Calypso (D61)"
-    assert_equal [ "HMS Calypso evacuated the family in December 1922." ], plan.facts
-    assert_equal [ "HMS Calypso (D61)" ], plan.result.plans[1].articles
-  end
-
-  test "planning from research is estimated cheaper than researching" do
-    assert Ai::Director.estimated_cost(12, researched: true) < Ai::Director.estimated_cost(12)
-  end
-
   test "keeps the titles as given when Wikipedia can't be reached" do
     titles = FakeTitles.new({}, error: Media::Error.new("en.wikipedia.org responded with 503"))
     plan = Ai::Director.new(generator: FakeGenerator.new(answer), titles: titles).plan(topic: "Prince Philip", scenes: scenes)
@@ -102,63 +81,6 @@ class Ai::DirectorTest < ActiveSupport::TestCase
 
     assert estimate > 0.2
     assert estimate < 0.4
-  end
-
-  class FakePreviews
-    def jpeg(media)
-      "jpeg-#{media.id}"
-    end
-  end
-
-  def storyboard
-    project = users(:one).projects.create!(prompt: "Prince Philip", tone: "documentary", target_length_minutes: 3)
-    [ [ "The baby left on a ship.", "HMS Calypso.jpg", "Reagans with Prince Philip.jpg" ],
-      [ "He married in 1947.", "Wedding portrait 1947.jpg", nil ] ].each_with_index.map do |(text, pick, other), index|
-      scene = project.scenes.create!(position: index + 1, text: text, start_ms: index * 10_000, duration_ms: 10_000,
-                                     plan: { "visual_intent" => text })
-      scene.images.create!(provider: "wikipedia_article", image_url: "https://upload.wikimedia.org/#{pick}", selected: true,
-                           page_url: "https://commons.wikimedia.org/wiki/File:#{pick}", credit: "x", license: "CC0",
-                           source_article: "HMS Calypso (D61)")
-      if other
-        scene.images.create!(provider: "wikimedia_commons", image_url: "https://upload.wikimedia.org/#{other}",
-                             page_url: "https://commons.wikimedia.org/wiki/File:#{other}", credit: "x", license: "CC0", taken_on: "1985")
-      end
-      scene.reload
-    end
-  end
-
-  test "reviews the whole storyboard: current pictures as images, other candidates by title" do
-    scenes = storyboard
-    other = scenes.first.images.reject(&:selected?).first
-    answer = { scenes: [ { scene: 1, action: "swap", candidate: other.id, note: "Better." },
-                         { scene: 2, action: "reject", note: "Modern photo.", ai_prompt: "A 1947 wedding at Westminster Abbey" } ] }
-    generator = FakeGenerator.new(answer.to_json)
-
-    review = Ai::Director.new(generator: generator, previews: FakePreviews.new)
-                         .review(topic: "Prince Philip", scenes: scenes, facts: [ "Left Corfu in 1922." ], fixed: [ 2 ])
-
-    assert_equal 2, generator.args[:images].size
-    assert_nil generator.args[:domains]
-    assert_equal "low", generator.args[:effort]
-    prompt = generator.args[:input]
-    assert_includes prompt, "- Left Corfu in 1922."
-    assert_includes prompt, "Scene 2 (10 s, rule: normal) fixed"
-    assert_includes prompt, "Current picture: [picture 1] \"HMS Calypso\" (from Wikipedia article \"HMS Calypso (D61)\")"
-    assert_includes prompt, "##{other.id} \"Reagans with Prince Philip\" (taken 1985)"
-    assert_equal Ai::Director::Decision.new(action: "swap", candidate_id: other.id, note: "Better.", ai_prompt: nil), review.decisions[1]
-    assert_equal "A 1947 wedding at Westminster Abbey", review.decisions[2].ai_prompt
-    assert_equal BigDecimal("0.3"), review.cost_usd
-  end
-
-  test "a swap to a candidate that isn't the scene's own is ignored, and so are unknown actions" do
-    scenes = storyboard
-    answer = { scenes: [ { scene: 1, action: "swap", candidate: 999_999 }, { scene: 2, action: "delete" },
-                         { scene: 7, action: "keep" } ] }
-
-    review = Ai::Director.new(generator: FakeGenerator.new(answer.to_json), previews: FakePreviews.new)
-                         .review(topic: "Prince Philip", scenes: scenes, facts: [])
-
-    assert_empty review.decisions
   end
 
   test "an answer without a plan is an error" do

@@ -72,7 +72,6 @@ class FindSceneImagesJob < ApplicationJob
       rank_candidates(project)
       check_pictures(project)
       second_chance(project)
-      review_storyboard(project)
     end
   ensure
     project.update!(settings: project.settings.except("scenes_searching"))
@@ -113,8 +112,11 @@ class FindSceneImagesJob < ApplicationJob
       scenes = project.scenes.order(:position).to_a
       result, facts = plan_with_director(project, scenes)
       unless result
-        result = Ai::ScenePlanner.new.call(topic: project.prompt, scenes: scenes)
+        research = project.settings["research"].presence unless project.image_mode == "ai_all"
+        result = Ai::ScenePlanner.new.call(topic: project.prompt, scenes: scenes, research: research,
+                                           pictures: research ? research_pictures(research) : [])
         record_usage(project, result, "scene_plan")
+        facts = Array(research && research["facts"])
       end
       project.update!(settings: project.settings.merge("topic_depiction" => result.topic_depiction,
                                                        "articles" => result.articles, "facts" => facts || []))
@@ -132,14 +134,14 @@ class FindSceneImagesJob < ApplicationJob
       false
     end
 
-    # The Director researches the real history and plans when real pictures are wanted. If it fails,
-    # the cheap scene planner plans instead; it also plans alone when every scene will be an AI image.
+    # A project researched before its script is planned by the cheap scene planner from that research
+    # (and the pictures its articles have). One without research has the Director research the real
+    # history and plan. If the Director fails, the cheap planner plans from the narration alone; it
+    # also plans alone when every scene will be an AI image.
     def plan_with_director(project, scenes)
-      return unless Ai::Director.enabled? && project.image_mode != "ai_all"
+      return unless Ai::Director.enabled? && project.image_mode != "ai_all" && project.settings["research"].blank?
 
-      research = project.settings["research"].presence
-      pictures = research ? research_pictures(research) : []
-      plan = Ai::Director.new.plan(topic: project.prompt, scenes: scenes, research: research, pictures: pictures)
+      plan = Ai::Director.new.plan(topic: project.prompt, scenes: scenes)
       record_usage(project, plan.result, "director_plan")
       if plan.dropped_articles.any?
         Rails.logger.info("Director named articles that don't exist for project #{project.id}: #{plan.dropped_articles.inspect}")
@@ -164,7 +166,7 @@ class FindSceneImagesJob < ApplicationJob
       Media::ArticleLibrary.build(articles, fetcher: @article_images)
     end
 
-    # What the research articles can show, as short lines for the Director's plan: a few from each
+    # What the research articles can show, as short lines for the scene plan: a few from each
     # article, so every article is represented.
     def research_pictures(research)
       library = Media::ArticleLibrary.build(Array(research["articles"]), fetcher: @article_images)
@@ -308,72 +310,6 @@ class FindSceneImagesJob < ApplicationJob
       raise
     rescue Ai::Error => e
       Rails.logger.warn("Second-chance search failed for project #{project.id}: #{e.message}")
-    end
-
-    # The Director looks at the whole storyboard once. A rejected picture makes way for an AI image
-    # (with the Director's prompt), and a swapped-in candidate must still pass the picture check.
-    # Scenes the user decided are left alone.
-    def review_storyboard(project)
-      return unless Ai::Director.enabled?
-
-      scenes = project.scenes.reload.includes(:images).order(:position).to_a
-      fixed = scenes.select { |scene| user_decided?(scene) }.map(&:position)
-      review = Ai::Director.new.review(topic: project.prompt, scenes: scenes, facts: project.settings["facts"], fixed: fixed)
-      record_usage(project, review, "director_review")
-
-      verifier = Ai::ImageVerifier.new
-      scenes.each do |scene|
-        decision = review.decisions[scene.position]
-        next if decision.nil? || fixed.include?(scene.position)
-
-        scene.update!(plan: scene.plan.merge("ai_prompt" => decision.ai_prompt)) if decision.ai_prompt
-        case decision.action
-        when "reject" then suggest_ai(scene, "Director: #{decision.note}") if scene.selected_image
-        when "swap" then swap_picture(project, scene, decision, verifier)
-        end
-      end
-    rescue Ai::OutOfCredits
-      raise
-    rescue Ai::Error => e
-      Rails.logger.warn("Storyboard review failed for project #{project.id}: #{e.message}")
-    end
-
-    def user_decided?(scene)
-      scene.media_check == "chosen" || scene.selected_image&.stored_file?
-    end
-
-    # The Director prefers this candidate. If it can't be used (it fails the check, or another scene
-    # shows it), a checked picture the scene already has stays; only a scene without one waits for an
-    # AI image. Rejecting outright is what "reject" is for.
-    def swap_picture(project, scene, decision, verifier)
-      candidate = scene.images.find { |media| media.id == decision.candidate_id }
-      shown_elsewhere = SceneImage.where(scene: project.scenes, selected: true).where.not(scene_id: scene.id).pluck(:image_url)
-      if candidate.nil? || candidate.stored_file? || shown_elsewhere.include?(candidate.image_url)
-        return swap_failed(scene, "Director: #{decision.note}")
-      end
-
-      result = verifier.call(scene: scene, candidates: [ candidate ])
-      project.api_usages.create!(provider: Ai::TextGenerator::PROVIDER, operation: "image_check",
-                                 units: result.total_tokens, cost_usd: result.cost_usd)
-      if result.choice_id == candidate.id && !(result.faces && scene.depiction != "normal")
-        candidate.select!
-        scene.update!(media_check: "verified", media_note: "Director: #{decision.note}", search_error: nil)
-      else
-        swap_failed(scene, "Director: #{decision.note} The replacement didn't pass the picture check.")
-      end
-    rescue Ai::OutOfCredits
-      raise
-    rescue Ai::Error => e
-      Rails.logger.warn("Checking the Director's swap failed for scene #{scene.id}: #{e.message}")
-      swap_failed(scene, "Director: #{decision.note}")
-    end
-
-    def swap_failed(scene, note)
-      if scene.selected_image && scene.media_check == "verified"
-        scene.update!(media_note: "#{note} The checked picture stays.")
-      else
-        suggest_ai(scene, note)
-      end
     end
 
     def suggest_ai(scene, note)

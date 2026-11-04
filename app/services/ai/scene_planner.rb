@@ -91,16 +91,50 @@ module Ai
       ((input_tokens * rates[:input] + output_tokens * rates[:output]) / 1_000_000).to_d.round(5)
     end
 
+    # Used when the topic was researched before the script: the plan follows that research and uses
+    # the pictures already found in its articles, so the cheap model can plan well.
+    RESEARCHED_PROMPT = <<~PROMPT.freeze
+      The topic has been researched already. Plan from the facts, visual subjects and article titles
+      given after the narration, not from memory. Name only articles from that list. The pictures
+      already found in those articles are listed too: where one fits a beat, name its article in that
+      beat's "articles" and describe the picture in the visual_intent, so the beat can use it.
+
+    PROMPT
+    MAX_PICTURES_SHOWN = 60
+
     def initialize(generator: Ai::TextGenerator.new)
       @generator = generator
     end
 
-    # scenes: records with position, text and duration_ms.
-    def call(topic:, scenes:)
-      result = @generator.call(system_prompt: SYSTEM_PROMPT, user_prompt: self.class.user_prompt(topic, scenes),
+    # scenes: records with position, text and duration_ms. research: the project's stored research
+    # (facts, articles, visual_subjects), when the script was written from it. pictures: short
+    # descriptions of the pictures found in the research articles.
+    def call(topic:, scenes:, research: nil, pictures: [])
+      prompt = self.class.user_prompt(topic, scenes)
+      prompt += self.class.research_notes(research, pictures) if research
+      result = @generator.call(system_prompt: (research ? RESEARCHED_PROMPT : "") + SYSTEM_PROMPT, user_prompt: prompt,
                                temperature: 0.2, json: true)
 
-      result_from(parse_json(result.text), scenes, total_tokens: result.total_tokens, cost_usd: result.cost_usd)
+      plan = result_from(parse_json(result.text), scenes, total_tokens: result.total_tokens, cost_usd: result.cost_usd)
+      research ? only_researched_articles(plan, research) : plan
+    end
+
+    # The research, written out after the narration.
+    def self.research_notes(research, pictures)
+      subjects = Array(research["visual_subjects"]).map do |subject|
+        "- #{subject["name"]}#{" (article: #{subject["article"]})" if subject["article"]}#{" #{subject["year"]}" if subject["year"]}"
+      end
+      [
+        "\n\nResearch facts:", *Array(research["facts"]).map { |fact| "- #{fact}" },
+        "\nArticles: #{researched_articles(research).join("; ")}",
+        "\nVisual subjects:", *subjects,
+        "\nPictures found in those articles:", *(pictures.any? ? pictures.first(MAX_PICTURES_SHOWN).map { |picture| "- #{picture}" } : [ "- none" ])
+      ].join("\n")
+    end
+
+    # The research's article titles, which were checked against Wikipedia when it was made.
+    def self.researched_articles(research)
+      (Array(research["articles"]) + Array(research["visual_subjects"]).filter_map { |subject| subject["article"] }).uniq
     end
 
     def self.user_prompt(topic, scenes)
@@ -116,6 +150,15 @@ module Ai
     end
 
     private
+      # The cheap model can invent titles. With research, only its checked titles are kept, so no
+      # search is wasted on an article that doesn't exist.
+      def only_researched_articles(result, research)
+        allowed = self.class.researched_articles(research)
+        keep = ->(titles) { titles & allowed }
+        result.with(articles: keep.call(result.articles),
+                    plans: result.plans.transform_values { |plan| plan.with(articles: keep.call(plan.articles)) })
+      end
+
       def parse_json(text)
         data = JSON.parse(text)
         data.is_a?(Hash) ? data : {}

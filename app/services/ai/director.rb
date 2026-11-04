@@ -1,23 +1,15 @@
 module Ai
-  # The one model responsible for a video's pictures.
+  # Plans the pictures of a project that has no stored research (projects made before research came
+  # first). It researches the real history on Wikipedia (the facts, and the exact titles of the
+  # articles about the people, places, ships and events), then plans every scene in the same shape
+  # as the scene planner. Article titles are checked against Wikipedia afterwards, so invented ones
+  # never reach the search. Projects with research are planned by the cheap scene planner instead.
   #
-  # Planning: it researches the real history on Wikipedia first (the facts, and the exact titles of
-  # the articles about the people, places, ships and events), then plans every scene in the same
-  # shape as the scene planner. Article titles are checked against Wikipedia afterwards, so invented
-  # ones never reach the search.
-  #
-  # Review: after the search, it looks at the whole storyboard at once and catches what one-scene
-  # checks miss (wrong era, generic or repeated pictures, a pick that contradicts the facts). For
-  # each scene it keeps the picture, swaps in another candidate, or rejects it with an AI prompt.
+  # OPENAI_DIRECTOR_MODEL also sets the model of the research before the script; "off" turns both off.
   class Director
     # facts: what the research established, shown to later steps. dropped_articles: titles that
     # don't exist on Wikipedia and were removed.
     Plan = Data.define(:result, :facts, :searches, :dropped_articles)
-    # action: "keep", "swap" (to candidate_id) or "reject". ai_prompt: for scenes left without a picture.
-    Decision = Data.define(:action, :candidate_id, :note, :ai_prompt)
-    Review = Data.define(:decisions, :total_tokens, :cost_usd)
-    ACTIONS = %w[keep swap reject].freeze
-    MAX_ALTERNATIVES = 6
 
     DOMAINS = %w[en.wikipedia.org].freeze
     MAX_SEARCHES = 8
@@ -36,189 +28,50 @@ module Ai
 
     PROMPT
 
-    # Used when the topic was researched before the script: the Director plans from that research
-    # and the pictures it found instead of searching again.
-    RESEARCHED_PROMPT = <<~PROMPT.freeze
-      You are the director of a documentary video and you are responsible for every picture in it
-      being right. The topic has been researched already: plan from the facts, visual subjects and
-      article titles given after the narration, not from memory. The pictures already found in
-      those articles are listed too: where one fits a beat, name its article in that beat's
-      "articles" and describe it in the visual_intent, so the beat can use it.
-
-      Then plan the video as the visual director described below.
-
-    PROMPT
-    MAX_PICTURES_SHOWN = 60
-
     # Set OPENAI_DIRECTOR_MODEL=off to plan with the cheap scene planner only.
     def self.enabled?
       ENV["OPENAI_DIRECTOR_MODEL"] != "off"
     end
 
     # Measured on a 12-scene video with gpt-5.5: $0.26 (28k tokens, 3 searches). Research reads
-    # search results, so input is mostly fixed; reasoning grows with the scene count. researched:
-    # the topic was researched before the script, so the plan reads that instead of searching.
-    def self.estimated_cost(scene_count, researched: false)
+    # search results, so input is mostly fixed; reasoning grows with the scene count.
+    def self.estimated_cost(scene_count)
       model = ENV.fetch("OPENAI_DIRECTOR_MODEL", Ai::ResearchGenerator::DEFAULT_MODEL)
       rates = Ai::ResearchGenerator::PRICING_PER_MILLION.fetch(model, { input: 0, output: 0 })
-      input_tokens = (researched ? 6_000 : 18_000) + scene_count * 400
+      input_tokens = 18_000 + scene_count * 400
       output_tokens = 1_500 + scene_count * 250
       tokens = (input_tokens * rates[:input] + output_tokens * rates[:output]) / 1_000_000
-      (tokens.to_d + (researched ? 0 : 4) * Ai::ResearchGenerator::PRICE_PER_SEARCH).round(4)
+      (tokens.to_d + 4 * Ai::ResearchGenerator::PRICE_PER_SEARCH).round(4)
     end
 
-    REVIEW_PROMPT = <<~PROMPT.freeze
-      You are the director of a documentary video and you are responsible for every picture in it
-      being right. You get the facts your research established and the storyboard: for each scene
-      its narration, what it should show, its depiction rule, its current picture (shown as an
-      image, labelled [picture N]) and the other candidates found for it (by title only).
-
-      Judge the storyboard as a whole, as a viewer would watch it. Reject or swap a picture when:
-      - it shows a different person, place, ship or event than the scene, or contradicts the facts;
-      - it is from the wrong era (a modern photo for a scene about the subject's childhood);
-      - it is generic, only loosely related, or about someone else (a photo of other famous people
-        when the scene is about the subject's own story);
-      - it repeats or nearly repeats another scene's picture;
-      - it breaks the scene's depiction rule (no_face: no face of the revered figure; no_figure:
-        the figure not shown in any form).
-      Swap only to a candidate whose title clearly shows the right subject and era, and never to a
-      candidate another scene already shows. Keep a picture that is right; do not reject for small
-      things. Scenes marked "fixed" were chosen by the user: decide "keep" for them.
-
-      A real picture beats an AI image, so reject only for the reasons above:
-      - When no camera could have caught the exact moment (a wave, an explosion, a crossing at night),
-        a real picture of the same event, place or people from that time (the aftermath, the site, the
-        people involved) is right: keep it.
-      - Never reject a picture to save it for another scene.
-      - When two scenes show the same or nearly the same picture, keep it in the scene it fits best
-        and reject or swap it only in the other.
-
-      For every scene left without a picture (rejected, or none found), write an ai_prompt: one or
-      two sentences describing a period-accurate image of the scene, following its depiction rule.
-
-      Return only JSON:
-      {"scenes": [{"scene": <number>, "action": "keep" | "swap" | "reject",
-                   "candidate": <candidate id, for swap only>,
-                   "note": "<one short sentence for the user explaining the decision>",
-                   "ai_prompt": "<only for scenes left without a picture>"}]}
-    PROMPT
-
-    def initialize(generator: Ai::ResearchGenerator.new, titles: Media::WikipediaTitles.new, planner: Ai::ScenePlanner.new,
-                   previews: Media::PreviewFetcher.new)
+    def initialize(generator: Ai::ResearchGenerator.new, titles: Media::WikipediaTitles.new, planner: Ai::ScenePlanner.new)
       @generator = generator
       @titles = titles
       @planner = planner
-      @previews = previews
     end
 
-    # scenes: records with position, text and duration_ms. research: the project's stored research
-    # (facts, articles, visual_subjects), when the script was written from it; the Director then
-    # doesn't search. pictures: short descriptions of the pictures found in the research articles.
-    def plan(topic:, scenes:, research: nil, pictures: [])
-      input = Ai::ScenePlanner.user_prompt(topic, scenes)
-      response =
-        if research
-          @generator.call(instructions: RESEARCHED_PROMPT + Ai::ScenePlanner::SYSTEM_PROMPT,
-                          input: input + research_notes(research, pictures))
-        else
-          @generator.call(instructions: RESEARCH_PROMPT + Ai::ScenePlanner::SYSTEM_PROMPT, input: input,
-                          domains: DOMAINS, max_searches: MAX_SEARCHES)
-        end
+    # scenes: records with position, text and duration_ms.
+    def plan(topic:, scenes:)
+      response = @generator.call(instructions: RESEARCH_PROMPT + Ai::ScenePlanner::SYSTEM_PROMPT,
+                                 input: Ai::ScenePlanner.user_prompt(topic, scenes),
+                                 domains: DOMAINS, max_searches: MAX_SEARCHES)
       data = parse_json(response.text)
       result = @planner.result_from(data, scenes, total_tokens: response.total_tokens, cost_usd: response.cost_usd)
       result, dropped = with_real_articles(result)
-      facts = research ? Array(research["facts"]) : Array(data["facts"])
 
-      Plan.new(result: result, facts: facts.map { |fact| fact.to_s.squish }.reject(&:empty?).first(research ? Ai::Researcher::MAX_FACTS : MAX_FACTS),
+      Plan.new(result: result, facts: Array(data["facts"]).map { |fact| fact.to_s.squish }.reject(&:empty?).first(MAX_FACTS),
                searches: response.searches, dropped_articles: dropped)
     end
 
-    # scenes: the project's scenes with their images. fixed: positions the Director must not change.
-    # Returns a Decision per scene it answered for; ids it gives are checked against each scene's own
-    # candidates.
-    def review(topic:, scenes:, facts:, fixed: [])
-      lines = []
-      images = []
-      scenes.each do |scene|
-        pick = scene.selected_image
-        jpeg = pick && preview(pick)
-        images << jpeg if jpeg
-        lines << storyboard_entry(scene, pick, jpeg && images.size, fixed.include?(scene.position))
-      end
-
-      input = "Topic: #{topic}\n\nFacts:\n#{Array(facts).map { |fact| "- #{fact}" }.join("\n")}\n\nStoryboard:\n#{lines.join("\n\n")}"
-      response = @generator.call(instructions: REVIEW_PROMPT, input: input, images: images, effort: "low")
-      data = parse_json(response.text, required: "scenes")
-      Review.new(decisions: decisions_from(data, scenes), total_tokens: response.total_tokens, cost_usd: response.cost_usd)
-    end
-
     private
-      def research_notes(research, pictures)
-        subjects = Array(research["visual_subjects"]).map do |subject|
-          "- #{subject["name"]}#{" (article: #{subject["article"]})" if subject["article"]}#{" #{subject["year"]}" if subject["year"]}"
-        end
-        [
-          "\n\nResearch facts:", *Array(research["facts"]).map { |fact| "- #{fact}" },
-          "\nArticles: #{Array(research["articles"]).join("; ")}",
-          "\nVisual subjects:", *subjects,
-          "\nPictures found in those articles:", *(pictures.any? ? pictures.first(MAX_PICTURES_SHOWN).map { |picture| "- #{picture}" } : [ "- none" ])
-        ].join("\n")
-      end
-
       # The answer may carry text or a code fence around the JSON when the model has searched.
-      def parse_json(text, required: "beats")
+      def parse_json(text)
         data = JSON.parse(text[/\{.*\}/m].to_s)
-        raise Ai::Error, "Director returned no #{required}" unless data.is_a?(Hash) && data[required].is_a?(Array)
+        raise Ai::Error, "Director returned no beats" unless data.is_a?(Hash) && data["beats"].is_a?(Array)
 
         data
       rescue JSON::ParserError
         raise Ai::Error, "Director returned invalid JSON"
-      end
-
-      def storyboard_entry(scene, pick, picture_number, fixed)
-        current =
-          if pick.nil? then "none"
-          elsif picture_number then "[picture #{picture_number}] #{describe(pick)}"
-          else "(no preview) #{describe(pick)}"
-          end
-        others = scene.images.reject { |media| media.selected? || media.stored_file? }.first(MAX_ALTERNATIVES)
-        [
-          "Scene #{scene.position} (#{(scene.duration_ms / 1000.0).round} s, rule: #{scene.depiction})#{" fixed" if fixed}",
-          "  Narration: #{scene.text}",
-          "  Should show: #{scene.plan["visual_intent"].presence || scene.text}",
-          "  Current picture: #{current}",
-          "  Other candidates: #{others.any? ? others.map { |media| "##{media.id} #{describe(media)}" }.join("; ") : "none"}"
-        ].join("\n")
-      end
-
-      def describe(media)
-        details = [ ("taken #{media.taken_on}" if media.taken_on.present?),
-                    ("from Wikipedia article \"#{media.source_article}\"" if media.source_article.present?),
-                    ("the user's own upload or AI image" if media.stored_file?) ].compact
-        "\"#{media.source_title}\"#{" (#{details.join("; ")})" if details.any?}"
-      end
-
-      def preview(media)
-        @previews.jpeg(media)
-      rescue Media::Error, Media::Ffmpeg::Error => e
-        Rails.logger.warn("No preview for #{media.id} in the storyboard review: #{e.message}")
-        nil
-      end
-
-      def decisions_from(data, scenes)
-        by_position = scenes.index_by(&:position)
-        data["scenes"].each_with_object({}) do |entry, decisions|
-          scene = by_position[entry["scene"].to_i]
-          next unless scene && ACTIONS.include?(entry["action"])
-
-          candidate_id = entry["candidate"].to_s.delete("#").to_i
-          candidate_id = nil unless entry["action"] == "swap" && scene.images.any? { |media| media.id == candidate_id }
-          next if entry["action"] == "swap" && candidate_id.nil?
-
-          decisions[scene.position] = Decision.new(action: entry["action"], candidate_id: candidate_id,
-                                                   note: entry["note"].to_s.squish.first(300),
-                                                   ai_prompt: entry["ai_prompt"].to_s.squish.first(1000).presence)
-        end
       end
 
       # Swaps each title for the article's real title (after redirects) and drops the ones that
