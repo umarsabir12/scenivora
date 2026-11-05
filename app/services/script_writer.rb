@@ -25,7 +25,11 @@ class ScriptWriter
     Research rules:
     - Tell the story the brief asks for. Most of the script stays on that story; background and
       what came after get a sentence or two, not paragraphs of their own.
-    - Write between the minimum and maximum word counts given. Do not exceed the maximum.
+    - Write between the minimum and maximum word counts given, in about the number of paragraphs
+      given. Do not exceed the maximum.
+    - Tell each moment once. Don't retell an event already narrated, and don't end with a recap of
+      the story.
+    - Never describe pictures or footage ("images showed ..."): narrate what happened.
     - Use only the facts in the research below. When the brief disagrees with the research (a date,
       a detail), follow the research. Attribute uncertain items ("according to ...") or leave them out.
     - Every paragraph names at least one concrete visual subject from the research (a person, place,
@@ -40,6 +44,12 @@ class ScriptWriter
       ("The story goes that ..."), in a sentence or two. Do not spend paragraphs proving or
       disproving it, and do not fill the length with unrelated background.
   PROMPT
+
+  # Paragraphs are counted more reliably than words, so the length is also given as paragraphs.
+  WORDS_PER_PARAGRAPH = 25
+
+  # The catalog's pictures listed for the script, so the story is told through moments that can be shown.
+  MAX_PICTURES_LISTED = 250
 
   # A script longer than the prompt's maximum (10% over its target) is shortened once.
   MAX_LENGTH_RATIO = 1.1
@@ -123,12 +133,24 @@ class ScriptWriter
         "- #{subject["name"]} (#{[ subject["kind"], subject["year"] ].compact.join(", ")})"
       end
       words = project.target_word_count
-      lines = [ user_prompt_for(project), "Word count: between #{(words * 0.9).round} and #{(words * 1.1).round} words." ]
+      lines = [ user_prompt_for(project), "Word count: between #{(words * 0.9).round} and #{(words * 1.1).round} words, " \
+                                          "in about #{(words / WORDS_PER_PARAGRAPH.to_f).round} paragraphs." ]
       lines << "\nResearch facts:\n#{Array(research["facts"]).map { |fact| "- #{fact}" }.join("\n")}"
       lines << "\nVisual subjects:\n#{subjects.join("\n")}"
       check = research["story_check"]
       lines << "\nThe brief's story: #{check["status"]}. #{check["note"]}".rstrip if check.is_a?(Hash) && check["status"].present?
+      lines << pictures_prompt(project)
       lines << "\nUncertain (attribute or leave out):\n#{research["uncertain"].map { |item| "- #{item}" }.join("\n")}" if Array(research["uncertain"]).any?
-      lines.join("\n")
+      lines.compact.join("\n")
+    end
+
+    # The usable pictures of the project's media catalog (see Ai::MediaCatalog), or nil without one.
+    def pictures_prompt(project)
+      pictures = Array(project.settings["catalog"]).select { |picture| picture["usable"] }.first(MAX_PICTURES_LISTED)
+      return if pictures.empty?
+
+      listed = pictures.map { |picture| "- #{picture["shows"]}#{" (#{picture["year"]})" if picture["year"].present?}" }
+      "\nPictures the video has (tell the story so most paragraphs can show one of these; a moment with no " \
+        "picture is shown with an illustration, so don't leave out key moments for lack of one):\n#{listed.join("\n")}"
     end
 end

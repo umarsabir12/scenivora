@@ -168,12 +168,25 @@ class ScriptWriterTest < ActiveSupport::TestCase
 
     perform_with(FakeGenerator.new(generation_result), researcher: FakeResearcher.new, writer: writer)
 
-    assert_includes writer.calls.first[:input], "Word count: between 540 and 660 words."
+    assert_includes writer.calls.first[:input], "Word count: between 540 and 660 words, in about 24 paragraphs."
     assert_equal 2, writer.calls.size
     assert_includes writer.calls.second[:instructions], "Shorten this narration script"
     assert_includes writer.calls.second[:input], "Word count: about 600"
     assert_equal "A tight script.", @project.reload.latest_script.body
     assert_equal BigDecimal("0.1"), @project.api_usages.find_by(operation: "script").cost_usd
+  end
+
+  test "lists the media catalog's usable pictures for the writer, and asks for each moment once" do
+    writer = FakeWriter.new
+    @project.update!(settings: { "catalog" => [ { "id" => "m1", "shows" => "Ronaldo lifting the Euro trophy", "year" => "2016", "usable" => true },
+                                                { "id" => "m2", "shows" => "A shopping mall", "usable" => false } ] })
+
+    perform_with(FakeGenerator.new(generation_result), researcher: FakeResearcher.new, writer: writer)
+
+    assert_includes writer.args[:input], "Pictures the video has"
+    assert_includes writer.args[:input], "- Ronaldo lifting the Euro trophy (2016)"
+    assert_not_includes writer.args[:input], "shopping mall"
+    assert_includes writer.args[:instructions], "Tell each moment once"
   end
 
   test "a script within the length is not shortened" do
