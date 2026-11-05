@@ -61,19 +61,21 @@ module Media
       scored.each_with_index.sort_by { |(_, score), index| [ -score, index ] }.map { |(item, _), _| item }
     end
 
+    # Stems found in so much of the library (usually the topic's own name) that they say little
+    # about which picture fits a scene.
+    def common_words
+      @common_words ||= begin
+        counts = @items.flat_map { |item| item_words(item) }.tally
+        limit = [ 2, (@items.size * COMMON_SHARE).floor ].max
+        counts.select { |_, count| count > limit }.keys
+      end
+    end
+
     private
       def item_words(item)
         @item_words ||= {}
         @item_words[item.image_url] ||= words([ item.page_url.to_s[/File:(.+)\z/, 1].to_s.tr("_", " "), item.description,
                                                 item.categories ].join(" "))
-      end
-
-      def common_words
-        @common_words ||= begin
-          counts = @items.flat_map { |item| item_words(item) }.tally
-          limit = [ 2, (@items.size * COMMON_SHARE).floor ].max
-          counts.select { |_, count| count > limit }.keys
-        end
       end
 
       # Lower-cased words of 4+ letters, compared on their first 5 letters ("flights" ~ "flight").

@@ -26,6 +26,11 @@ class SceneImage < ApplicationRecord
     media_type == "video"
   end
 
+  # Mood footage from the fixed filler list, not footage of the scene's own subject.
+  def filler?
+    video? && Media::Fillers.filler?(image_url)
+  end
+
   # Where a scene's clip starts in a source video: a quarter of the way in (archive films often
   # open with title cards), but early enough that the whole scene fits when the video is long enough.
   def self.default_clip_start(video_ms, scene_ms)

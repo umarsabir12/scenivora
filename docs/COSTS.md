@@ -49,11 +49,9 @@ the same as the first voice. Voice samples are paid once per voice and then reus
 they are static files in `public/voice_samples/`, so no request goes to OpenAI. Regenerate a sample
 only if you change its text or voice list.
 
-**Scene images** cost nothing today. Wikimedia Commons and Pixabay are free to search, and the app
-doesn't call any paid service to find images. Two costs come later:
-- A vision check on each candidate image, not built yet. Its estimate will go on the Create scene
-  button once its price is confirmed.
-- AI-generated images, if enabled, cost per image. Not built yet.
+**Scene images:** searching Wikipedia, Wikimedia Commons and Pixabay, scoring the results and
+filler footage are free. The paid parts are the scene plan, the picture check, the picture scout
+and AI images; see **Checking pictures** and **AI scene images** below.
 
 **Speed previews** are played in the browser, so they cost nothing. Only the final narration sends
 the chosen speed to OpenAI.
@@ -70,7 +68,10 @@ length, or several hundred scripts with no voice-over.
   $5 per 1M input tokens, $30 per 1M output tokens (reasoning counts as output), $10 per 1,000
   searches. Compared on the same project: `gpt-5-mini` $0.10, `gpt-4.1` $0.05, but neither planned
   as well (gpt-4.1 never named the key articles). Not used in "AI images for every scene" mode.
-- **Relevance check:** one text call per project, measured $0.0006 for 14 scenes.
+- **Scoring:** free. Candidates are scored in code (`Media::CandidateScore`) and only the best 4 per
+  scene reach the picture check. It replaced a one-call relevance check (measured $0.0006 for 14
+  scenes) and roughly halves the previews the picture check looks at.
+- **Filler footage:** free. A fixed list of Commons clips (`config/fillers.yml`); no search or AI call.
 - **Wikipedia article pictures:** free (no key, no AI); one request per article, up to about 18 per video.
 - **Picture check:** one call per scene with up to 6 small previews (3 before October 2026), estimated
   $0.002 per scene, about double the 3-preview check ($0.001, about 6,400 tokens). About $0.05 for a

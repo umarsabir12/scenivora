@@ -39,7 +39,7 @@ module Media
           title: page["title"].to_s.delete_prefix("File:").sub(/\.[a-z0-9]+\z/i, ""),
           audio_url: info["url"],
           page_url: info["descriptionurl"],
-          credit: ActionController::Base.helpers.strip_tags(meta.dig("Artist", "value").to_s).squish.presence || "Wikimedia Commons contributor",
+          credit: CommonsMetadata.artist(meta) || "Wikimedia Commons contributor",
           license: license,
           duration_ms: (info["duration"].to_f * 1000).round,
           content_type: info["mime"]

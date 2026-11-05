@@ -1,6 +1,12 @@
 require "test_helper"
 
 class FindSceneImagesJobTest < ActiveJob::TestCase
+  # A Commons file page for a fake result, named so it fits the test scenes about Tesla in Croatia
+  # the way real search results name what they show.
+  def self.file_page(name)
+    "https://commons.wikimedia.org/wiki/File:Nikola_Tesla_in_Croatia_#{name.to_s.parameterize.underscore}.jpg"
+  end
+
   # Returns one fixed candidate per query, and can be told to fail.
   class FakeSearch
     def initialize(error: nil, provider: "wikimedia_commons")
@@ -12,7 +18,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
       raise @error if @error
 
       [ Media::ImageResult.new(provider: @provider, image_url: "https://img.example/#{query.parameterize}.jpg",
-                               page_url: "https://src.example/#{query.parameterize}", credit: "Jane",
+                               page_url: FindSceneImagesJobTest.file_page(query), credit: "Jane",
                                license: "CC BY 4.0") ]
     end
   end
@@ -91,8 +97,10 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
   class FakePlanner
     attr_reader :calls, :received
 
-    def initialize(error: nil, plans: nil, queries: nil, topic_depiction: "normal", articles: [], beat_articles: {})
+    def initialize(error: nil, plans: nil, queries: nil, topic_depiction: "normal", articles: [], beat_articles: {},
+                   subject_type: "real_person")
       @error = error
+      @subject_type = subject_type
       @plans = plans
       @queries = queries
       @topic_depiction = topic_depiction
@@ -108,7 +116,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
       plans = @plans || scenes.to_h do |scene|
         [ scene.position, Ai::ScenePlanner::Plan.new(position: scene.position, visual_intent: "Scene #{scene.position}",
-          subject_type: "generic_scene", search_queries: @queries || [ "Tesla #{scene.position}" ], ai_fallback_allowed: true,
+          subject_type: @subject_type, search_queries: @queries || [ "Tesla #{scene.position}" ], ai_fallback_allowed: true,
           articles: @beat_articles.fetch(scene.position, [])) ]
       end
       Ai::ScenePlanner::Result.new(plans: plans, total_tokens: 700, cost_usd: BigDecimal("0.0001"), topic_depiction: @topic_depiction,
@@ -141,25 +149,6 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
       raise @error if @error
 
       @videos.first(limit)
-    end
-  end
-
-  # Stands in for the relevance check: keeps every candidate in order unless told otherwise.
-  class FakeRanker
-    attr_reader :calls
-
-    def initialize(keep: nil, error: nil)
-      @keep = keep
-      @error = error
-      @calls = 0
-    end
-
-    def call(topic:, scenes:)
-      @calls += 1
-      raise @error if @error
-
-      kept = scenes.to_h { |scene| [ scene.position, @keep ? @keep.call(scene) : scene.images.map(&:id) ] }
-      Ai::CandidateRanker::Result.new(kept: kept, total_tokens: 500, cost_usd: BigDecimal("0.0001"))
     end
   end
 
@@ -214,29 +203,27 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     end
   end
 
-  def run_job(commons: FakeSearch.new, pixabay: nil, planner: FakePlanner.new, videos: FakeVideoSearch.new, ranker: FakeRanker.new,
+  def run_job(commons: FakeSearch.new, pixabay: nil, planner: FakePlanner.new, videos: FakeVideoSearch.new,
               verifier: FakeVerifier.new, scout: FakeScout.new, articles: FakeArticles.new, director: nil,
               categories: FakeCategories.new)
     with_stubbed_method(Ai::Director, :enabled?, -> { !director.nil? }) do
       with_stubbed_new(Ai::Director, director) do
         with_stubbed_new(Media::CommonsCategoryImages, categories) do
-          run_services(commons:, pixabay:, planner:, videos:, ranker:, verifier:, scout:, articles:)
+          run_services(commons:, pixabay:, planner:, videos:, verifier:, scout:, articles:)
         end
       end
     end
   end
 
-  def run_services(commons:, pixabay:, planner:, videos:, ranker:, verifier:, scout:, articles:)
+  def run_services(commons:, pixabay:, planner:, videos:, verifier:, scout:, articles:)
     with_stubbed_new(Media::CommonsSearch, commons) do
       with_stubbed_new(Media::WikipediaArticleImages, articles) do
         with_stubbed_new(Media::CommonsVideoSearch, videos) do
           with_stubbed_new(Media::PixabaySearch, pixabay || FakeSearch.new(provider: "pixabay")) do
             with_stubbed_new(Ai::ScenePlanner, planner) do
-              with_stubbed_new(Ai::CandidateRanker, ranker) do
-                with_stubbed_new(Ai::ImageVerifier, verifier) do
-                  with_stubbed_new(Ai::PictureScout, scout) do
-                    FindSceneImagesJob.perform_now(@project)
-                  end
+              with_stubbed_new(Ai::ImageVerifier, verifier) do
+                with_stubbed_new(Ai::PictureScout, scout) do
+                  FindSceneImagesJob.perform_now(@project)
                 end
               end
             end
@@ -246,7 +233,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     end
   end
 
-  def article_picture(name, description: nil)
+  def article_picture(name, description: "Nikola Tesla in Croatia")
     Media::ImageResult.new(provider: "wikipedia_article", image_url: "https://upload.wikimedia.org/#{name}.jpg",
                            page_url: "https://en.wikipedia.org/wiki/File:#{name}.jpg", credit: "Archive",
                            license: "Public domain", description: description, source_article: "Nikola Tesla")
@@ -304,7 +291,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
   test "with stored research, the cheap planner plans from it, sees its pictures, and the Director isn't paid" do
     @project.update!(settings: { "research" => { "key" => "k", "facts" => [ "Tesla moved to New York in 1884." ],
                                                   "articles" => [ "Nikola Tesla" ], "visual_subjects" => [] } })
-    portrait = article_picture("Tesla_portrait_1890", description: "Portrait")
+    portrait = article_picture("Tesla_portrait_1890", description: "Portrait of Nikola Tesla in Croatia")
     articles = FakeArticles.new({ "Nikola Tesla" => [ portrait ] })
     planner = FakePlanner.new
     director = FakeDirector.new
@@ -381,7 +368,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
     scenes = @project.reload.scenes
     assert scenes.all? { |scene| scene.search_error.present? }
-    assert scenes.all? { |scene| scene.images.empty? }
+    assert scenes.all? { |scene| scene.images.reject(&:filler?).empty? }
   end
 
   test "Pixabay is added only when there are fewer Commons results than the limit" do
@@ -421,7 +408,8 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
       Array.new(limit) do |i|
         Media::ImageResult.new(provider: "wikimedia_commons", image_url: "https://img.example/#{query.parameterize}-#{i}.jpg",
-                               page_url: "https://src.example", credit: "Jane", license: "CC0")
+                               page_url: FindSceneImagesJobTest.file_page("#{query} #{("a".."z").to_a[i]}"), credit: "Jane",
+                               license: "CC0")
       end
     end
   end
@@ -436,7 +424,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     run_job(commons: search, planner: single_plan([ "Karachi harbour 1876", "historical Karachi harbour" ]))
 
     scene = @project.reload.scenes.first
-    assert_equal FindSceneImagesJob::POOL_SIZE / 2, scene.images.count
+    assert_equal FindSceneImagesJob::MAX_CHECKED, scene.images.count
     assert_equal "Karachi harbour 1876", search.queries.first
     assert_equal "Karachi harbour", search.queries.last
     assert search.queries.all? { |query| query.split.size >= 2 }, search.queries.inspect
@@ -449,7 +437,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     run_job(commons: search, planner: single_plan([ "Karachi 1876", "Karachi" ]))
 
     scene = @project.reload.scenes.first
-    assert_equal FindSceneImagesJob::POOL_SIZE / 2, scene.images.count
+    assert_equal FindSceneImagesJob::MAX_CHECKED, scene.images.count
     assert_nil scene.search_error
   end
 
@@ -541,11 +529,12 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
   end
 
   test "when the AI provider is out of credit the run stops instead of keeping unchecked pictures" do
-    ranker = FakeRanker.new(error: Ai::OutOfCredits.new("Text generation failed: 429"))
-    verifier = FakeVerifier.new
+    verifier = FakeVerifier.new(error: Ai::OutOfCredits.new("Text generation failed: 429"))
+    scout = FakeScout.new
 
-    assert_raises(Ai::OutOfCredits) { run_job(ranker: ranker, verifier: verifier) }
-    assert_equal 0, verifier.calls
+    assert_raises(Ai::OutOfCredits) { run_job(verifier: verifier, scout: scout) }
+    assert_equal 1, verifier.calls
+    assert_empty scout.calls
     assert_nil @project.reload.settings["scenes_searching"]
   end
 
@@ -557,32 +546,78 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert_equal [ "Karachi 1876 harbour" ], videos.queries.uniq
   end
 
-  test "the relevance check removes rejected candidates and selects its first choice" do
-    search = PickySearch.new(found: [ "Karachi" ])
-    ranker = FakeRanker.new(keep: ->(scene) { scene.images.map(&:id).reverse.first(2) })
+  # Finds the given pictures for every query.
+  class FixedSearch
+    def initialize(results)
+      @results = results
+    end
 
-    run_job(commons: search, planner: single_plan([ "Karachi" ]), ranker: ranker)
-
-    scene = @project.reload.scenes.first
-    assert_equal 2, scene.images.count
-    assert scene.images.max_by(&:id).selected?, "the ranker's first choice is selected"
-    assert_equal 500, @project.api_usages.find_by(operation: "candidate_rank").units
+    def search(_query, limit: 3)
+      @results.first(limit)
+    end
   end
 
-  test "a scene whose candidates are all rejected asks the user to step in" do
-    run_job(ranker: FakeRanker.new(keep: ->(_scene) { [] }))
-
-    scene = @project.reload.scenes.first
-    assert scene.images.none?
-    assert_equal FindSceneImagesJob::NO_MATCH, scene.search_error
+  def found_picture(title, **details)
+    Media::ImageResult.new(provider: "wikimedia_commons", image_url: "https://upload.wikimedia.org/#{title.parameterize}.jpg",
+                           page_url: "https://commons.wikimedia.org/wiki/File:#{title.tr(" ", "_")}.jpg", credit: "Jane",
+                           license: "CC0", **details)
   end
 
-  test "a failed relevance check keeps the candidates as they were" do
-    run_job(ranker: FakeRanker.new(error: Ai::Error.new("Text generation failed: quota")))
+  test "only the best-scored candidates are kept, so the picture check sees no unrelated ones" do
+    fitting = found_picture("Nikola Tesla in his Croatian birthplace")
+    unrelated = found_picture("Madame Tussauds wax figures London")
+
+    run_job(commons: FixedSearch.new([ unrelated, fitting ]))
 
     scene = @project.reload.scenes.first
+    assert_equal [ fitting.image_url ], scene.images.pluck(:image_url)
     assert scene.selected_image.present?
-    assert_nil @project.api_usages.find_by(operation: "candidate_rank")
+  end
+
+  test "a scene about a real subject with nothing that fits gets an AI suggestion and filler footage meanwhile" do
+    run_job(commons: FixedSearch.new([ found_picture("Madame Tussauds wax figures London") ]))
+
+    scene = @project.reload.scenes.first
+    assert scene.ai_suggested?
+    assert scene.selected_image.filler?, "filler footage stands in until the AI image is made"
+  end
+
+  test "a mood scene with nothing that fits gets filler footage, not an AI image or the scout" do
+    scout = FakeScout.new
+    verifier = FakeVerifier.new
+
+    run_job(commons: FixedSearch.new([]), planner: FakePlanner.new(subject_type: "abstract"), scout: scout, verifier: verifier)
+
+    scenes = @project.reload.scenes
+    assert scenes.all? { |scene| scene.media_check == "filler" && scene.selected_image&.filler? }
+    assert_equal FindSceneImagesJob::FILLER_NOTE, scenes.first.media_note
+    assert_empty scout.calls
+    assert_equal 0, verifier.calls
+  end
+
+  test "a historical video's filler footage is never modern" do
+    @project.update!(settings: { "research" => { "key" => "k", "facts" => [ "Philip left Corfu in 1922." ], "articles" => [] } })
+    @project.latest_script.update!(body: "The ship reached the busy harbour docks of the city. " * 20)
+
+    run_job(commons: FixedSearch.new([]), planner: FakePlanner.new(subject_type: "abstract"))
+
+    modern = Media::Fillers.clips.select { |clip| clip.era == "modern" }.map(&:video_url)
+    assert @project.reload.scenes.none? { |scene| modern.include?(scene.selected_image.image_url) }
+  end
+
+  test "filler footage isn't repeated while other clips are left" do
+    run_job(commons: FixedSearch.new([]), planner: FakePlanner.new(subject_type: "abstract"))
+
+    urls = @project.reload.scenes.map { |scene| scene.selected_image.image_url }
+    assert_equal urls.size, urls.uniq.size
+  end
+
+  test "a mood scene whose candidates all fail the check gets filler footage" do
+    run_job(planner: FakePlanner.new(subject_type: "generic_scene"), verifier: FakeVerifier.new(choose: ->(_candidates) { nil }))
+
+    scene = @project.reload.scenes.first
+    assert_equal "filler", scene.media_check
+    assert scene.selected_image.filler?
   end
 
   test "a picture that passes the check is selected and marked checked" do
@@ -600,9 +635,9 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
     scene = @project.reload.scenes.first
     assert scene.ai_suggested?
-    assert_nil scene.selected_image
+    assert scene.selected_image.filler?, "filler footage stands in until the AI image is made"
     assert_match "No real picture fits", scene.media_note
-    assert scene.images.any?, "candidates stay available for a manual pick"
+    assert scene.images.reject(&:filler?).any?, "candidates stay available for a manual pick"
   end
 
   test "a failed picture check flags the scene for review and keeps its picture" do
@@ -631,11 +666,9 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
     run_job(commons: search, planner: single_plan([ "Culebra Cut steam shovel", "Gatun Locks construction", "Panama Canal" ]))
 
-    scene = @project.reload.scenes.first
-    titles = scene.images.map(&:image_url)
-    assert titles.any? { |url| url.include?("culebra-cut") }
-    assert titles.any? { |url| url.include?("gatun-locks") }
-    assert_equal FindSceneImagesJob::POOL_SIZE, scene.images.count
+    assert_includes search.queries, "Culebra Cut steam shovel"
+    assert_includes search.queries, "Gatun Locks construction"
+    assert_equal FindSceneImagesJob::MAX_CHECKED, @project.reload.scenes.first.images.count
   end
 
   def scout_find(name)
@@ -691,13 +724,13 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     same = Class.new do
       def search(_query, limit: 3)
         [ Media::ImageResult.new(provider: "wikimedia_commons", image_url: "https://img.example/same.jpg",
-                                 page_url: "https://src.example", credit: "Jane", license: "CC0") ]
+                                 page_url: FindSceneImagesJobTest.file_page("same"), credit: "Jane", license: "CC0") ]
       end
     end.new
 
     run_job(commons: same)
 
-    selected = @project.reload.scenes.filter_map(&:selected_image).map(&:image_url)
+    selected = @project.reload.scenes.filter_map(&:selected_image).reject(&:filler?).map(&:image_url)
     assert_equal [ "https://img.example/same.jpg" ], selected
     assert @project.scenes.drop(1).all?(&:ai_suggested?)
   end
@@ -745,25 +778,24 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert_equal [], @project.scenes.second.plan["articles"]
   end
 
-  test "a scene's own article pictures come first, and keyword search still runs" do
-    own = (1..5).map { |i| article_picture("Smiljan_#{i}") }
+  test "a scene's own article pictures score above keyword results, and keyword search still runs" do
+    own = %w[a b].map { |letter| article_picture("Tesla_birthplace_Smiljan_#{letter}").with(source_article: "Smiljan") }
     articles = FakeArticles.new({ "Smiljan" => own, "Nikola Tesla" => [ article_picture("Tesla_portrait") ] })
     commons = CountingSearch.new
-    planner = FakePlanner.new(articles: [ "Nikola Tesla" ], beat_articles: { 1 => [ "Smiljan" ] })
+    planner = FakePlanner.new(articles: [ "Nikola Tesla" ], beat_articles: { 1 => [ "Smiljan" ] },
+                              queries: [ "Tesla birthplace Smiljan" ])
 
     run_job(planner: planner, articles: articles, commons: commons)
 
     scene = @project.reload.scenes.first
-    assert_equal own.map(&:image_url), scene.images.where(media_type: "image").order(:id).limit(5).pluck(:image_url)
-    assert_equal "wikipedia_article", scene.selected_image.provider
-    assert_equal "Nikola Tesla", scene.selected_image.source_article
+    assert_equal own.map(&:image_url), scene.images.where(media_type: "image").order(:id).limit(2).pluck(:image_url)
+    assert_equal "Smiljan", scene.selected_image.source_article
     assert_equal [ "Nikola Tesla", "Smiljan" ], articles.calls
-    assert_includes commons.queries, "Tesla 1"
-    assert_includes scene.images.pluck(:image_url), "https://img.example/tesla-1.jpg"
+    assert_includes commons.queries, "Tesla birthplace Smiljan"
   end
 
   test "library pictures that share words with a scene join its pool beside the keyword search" do
-    portrait = article_picture("Tesla_portrait", description: "Portrait of Nikola Tesla")
+    portrait = article_picture("Tesla_portrait", description: "Portrait of Nikola Tesla in Croatia")
     commons = CountingSearch.new
     planner = FakePlanner.new(articles: [ "Nikola Tesla" ])
 
@@ -831,7 +863,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
     scene = @project.reload.scenes.first
     assert scene.ai_suggested?
-    assert_nil scene.selected_image
+    assert scene.selected_image.filler?
     assert_match "shows faces", scene.media_note
   end
 

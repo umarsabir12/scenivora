@@ -14,6 +14,17 @@ module Media
       }
     end
 
+    # Who made the file. An author given only as a numbered link ("[1]", pointing at a Flickr
+    # account) is named after the link instead, else left to the caller's default.
+    def self.artist(meta)
+      html = meta.dig("Artist", "value").to_s
+      name = text(html)
+      return name unless name.empty? || name.match?(/\A[\[\]\d\s,]+\z/)
+
+      account = html[%r{flickr\.com/photos/([^/"]+)}, 1]
+      account && "#{CGI.unescape(account)} on Flickr"
+    end
+
     def self.text(html)
       ActionController::Base.helpers.strip_tags(html.to_s).squish
     end

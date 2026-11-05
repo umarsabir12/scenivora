@@ -41,7 +41,7 @@ module Media
           video_url: url,
           poster_url: info["thumburl"],
           page_url: info["descriptionurl"],
-          credit: ActionController::Base.helpers.strip_tags(meta.dig("Artist", "value").to_s).squish.presence || "Wikimedia Commons contributor",
+          credit: CommonsMetadata.artist(meta) || "Wikimedia Commons contributor",
           license: license,
           duration_ms: (info["duration"].to_f * 1000).round,
           **CommonsMetadata.details(meta)

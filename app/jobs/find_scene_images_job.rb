@@ -1,15 +1,22 @@
 # Plans a picture search for each scene with a single planner call, gathers the pictures of the
-# Wikipedia articles named, then gives each scene its candidates: its own articles' pictures first,
-# keyword search only when those run short. Storyboard projects ("Create video") already have their
-# scenes, laid out from the script; older projects split the confirmed narration into scenes here. The planner runs only when the script or the
-# narration length has changed, so repeated clicks don't pay for the same plan twice.
+# Wikipedia articles named, then gives each scene its candidates: its own articles' pictures and
+# keyword search results, scored in code (Media::CandidateScore) so only the few that fit are checked.
+# A mood scene ("the years passed") with nothing that fits gets filler footage; a scene about a real
+# subject gets an AI image suggested, with filler footage until it is made. Storyboard projects
+# ("Create video") already have their scenes, laid out from the script; older projects split the
+# confirmed narration into scenes here. The planner runs only when the script or the narration
+# length has changed, so repeated clicks don't pay for the same plan twice.
 class FindSceneImagesJob < ApplicationJob
   queue_as :default
 
   MAX_CANDIDATES = 5
-  # Candidates gathered per scene for the relevance check to choose from.
+  # Candidates gathered per scene for scoring.
   POOL_SIZE = 12
-  NO_MATCH = "No matching free image found. Search again, upload one, or generate one with AI.".freeze
+  # The best-scored candidates kept per scene: the picture check looks at these and no more.
+  MAX_CHECKED = 4
+  # Scenes with no specific subject to show, which filler footage can carry.
+  MOOD_SUBJECTS = %w[abstract generic_scene].freeze
+  FILLER_NOTE = "Filler footage: this scene has no specific subject to show.".freeze
   MAX_SEARCHES_PER_SCENE = 6
   # How the pool is shared: the scene's own articles' pictures, keyword search results and other library
   # pictures, so one big article can't crowd out what a search finds. Places one source can't fill go
@@ -71,9 +78,9 @@ class FindSceneImagesJob < ApplicationJob
     else
       @library = build_library(project, scenes)
       scenes.each { |scene| find_images(scene) }
-      rank_candidates(project)
       check_pictures(project)
       second_chance(project)
+      fill_waiting_scenes(project)
     end
   ensure
     project.update!(settings: project.settings.except("scenes_searching"))
@@ -203,38 +210,6 @@ class FindSceneImagesJob < ApplicationJob
       scene.update!(search_error: "Image search failed. Try again later.")
     end
 
-    # One relevance check for the whole project. Candidates it rejects are removed, the best kept one
-    # is selected, and a scene with none left asks the user to step in. If the check fails, the
-    # scenes keep their unranked candidates.
-    def rank_candidates(project, only: nil)
-      scenes = project.scenes.includes(:images).select { |scene| scene.images.any? { |media| !media.stored_file? } }
-      scenes = scenes.select { |scene| only.map(&:id).include?(scene.id) } if only
-      return if scenes.empty?
-
-      result = Ai::CandidateRanker.new.call(topic: project.prompt, scenes: scenes)
-      project.api_usages.create!(provider: Ai::TextGenerator::PROVIDER, operation: "candidate_rank",
-                                 units: result.total_tokens, cost_usd: result.cost_usd)
-      scenes.each { |scene| apply_ranking(scene, result.kept.fetch(scene.position, [])) }
-    rescue Ai::OutOfCredits
-      raise
-    rescue Ai::Error => e
-      Rails.logger.warn("Candidate check failed for project #{project.id}: #{e.message}")
-    end
-
-    def apply_ranking(scene, kept_ids)
-      SceneImage.transaction do
-        scene.images.reject { |media| media.stored_file? || kept_ids.include?(media.id) }.each(&:destroy!)
-        scene.images.reset
-        best = scene.images.find { |media| media.id == kept_ids.first }
-        if best
-          best.select!
-          scene.update!(search_error: nil)
-        elsif scene.images.none?
-          scene.update!(search_error: NO_MATCH)
-        end
-      end
-    end
-
     # Looks at each scene's best candidates and keeps one only if it truly fits. A scene with none
     # gets its sourced picture deselected and an AI image suggested, so nothing unchecked reaches
     # the video. The user's own uploads and AI images are left alone.
@@ -250,7 +225,11 @@ class FindSceneImagesJob < ApplicationJob
         used.delete(scene.selected_image&.image_url) if scene.media_check.in?(%w[verified chosen])
         candidates = scene.images.reject { |media| media.stored_file? || used.include?(media.image_url) }
                               .sort_by { |media| media.selected? ? 0 : 1 }
-        next suggest_ai(scene, scene.search_error.presence || "No free picture was found.") if candidates.empty?
+        if candidates.empty?
+          next use_filler(project, scene, FILLER_NOTE) if mood_scene?(scene)
+
+          next suggest_ai(scene, scene.search_error.presence || "No free picture fits this scene.")
+        end
 
         chosen = check_scene(project, scene, candidates, verifier)
         used << chosen.image_url if chosen
@@ -273,6 +252,9 @@ class FindSceneImagesJob < ApplicationJob
         chosen.select!
         scene.update!(media_check: "verified", media_note: result.reason, search_error: nil)
         chosen
+      elsif mood_scene?(scene)
+        use_filler(project, scene, FILLER_NOTE)
+        nil
       else
         suggest_ai(scene, "No real picture fits. #{result.reason}".strip)
         nil
@@ -317,6 +299,36 @@ class FindSceneImagesJob < ApplicationJob
     rescue Ai::Error => e
       Rails.logger.warn("Picture scout failed for scene #{scene.id}: #{e.message}")
       nil
+    end
+
+    def mood_scene?(scene)
+      MOOD_SUBJECTS.include?(scene.plan["subject_type"])
+    end
+
+    # Selects filler footage for the scene. With a note, the filler is the scene's picture (a mood
+    # scene); without one, it only stands in until the suggested AI image is made.
+    def use_filler(project, scene, note = nil)
+      used = project.scenes.includes(:images).filter_map { |other| other.selected_image&.image_url }
+      historical = Media::Fillers.historical?(project.prompt, scene.text, *Array(project.settings.dig("research", "facts")))
+      clip = Media::Fillers.new.pick([ scene.text, scene.plan["visual_intent"] ].join(" "), used_urls: used, historical: historical)
+      return unless clip
+
+      scene.images.where(selected: true).update_all(selected: false)
+      scene.images.create!(provider: clip.provider, media_type: "video", image_url: clip.video_url, poster_url: clip.poster_url,
+                           page_url: clip.page_url, credit: clip.credit, license: clip.license, duration_ms: clip.duration_ms,
+                           description: clip.description, selected: true,
+                           clip_start_ms: SceneImage.default_clip_start(clip.duration_ms, scene.duration_ms))
+      scene.update!(media_check: "filler", media_note: note, search_error: nil) if note
+    end
+
+    # Scenes still waiting for an AI image show filler footage meanwhile, so the storyboard has no
+    # gaps and can be approved before every AI image is made. Scenes whose planning failed stay
+    # empty, so the retry message isn't hidden.
+    def fill_waiting_scenes(project)
+      waiting = project.scenes.includes(:images).select do |scene|
+        scene.ai_suggested? && scene.selected_image.nil? && scene.search_error != PLANNING_FAILED
+      end
+      waiting.each { |scene| use_filler(project, scene) }
     end
 
     def suggest_ai(scene, note)
@@ -393,14 +405,15 @@ class FindSceneImagesJob < ApplicationJob
     # The pool: the best of the scene's own articles' pictures (the article and its Commons category),
     # what the keyword search finds, and other library pictures that share words with what the scene
     # should show, in the shares of POOL_SHARES. The search always runs, because even a big library
-    # can miss the moment a scene needs. The relevance check chooses from the pool.
+    # can miss the moment a scene needs. Only the best-scored few are kept for the picture check.
     def candidates_for(scene, use_library: true)
       planned = [ scene.search_query, *scene.plan["search_queries"] ].compact_blank.uniq { |query| query.downcase }
       own, matched = use_library ? library_candidates(scene, planned) : [ [], [] ]
       searched = searched_candidates(scene, planned, own.size + matched.size)
 
       shares = own.first(POOL_SHARES[:own]) + searched.first(POOL_SHARES[:searched]) + matched.first(POOL_SHARES[:matched])
-      (shares + own + searched + matched).uniq(&:image_url).first(POOL_SIZE)
+      pool = (shares + own + searched + matched).uniq(&:image_url).first(POOL_SIZE)
+      Media::CandidateScore.new(scene, common_words: @library&.common_words || []).best(pool, limit: MAX_CHECKED)
     end
 
     # [own, matched]: the scene's own articles' pictures, best match first, and other library pictures

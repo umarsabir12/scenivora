@@ -12,6 +12,7 @@ module ScenesHelper
     "verified" => [ "✓ Checked", "bg-emerald-500/15 text-emerald-300" ],
     "chosen" => [ "Your choice", "bg-zinc-700 text-zinc-200" ],
     "ai_suggested" => [ "AI image suggested", "bg-violet-500/15 text-violet-300" ],
+    "filler" => [ "Filler", "bg-zinc-700 text-zinc-200" ],
     "unchecked" => [ "Not checked", "bg-amber-400/15 text-amber-300" ]
   }.freeze
 
@@ -81,7 +82,8 @@ module ScenesHelper
   def scene_image_counts(scenes)
     selected = scenes.map(&:selected_image)
     { free: selected.count { |image| image && !image.stored_file? && !image.video? },
-      videos: selected.count { |image| image&.video? },
+      videos: selected.count { |image| image&.video? && !image.filler? },
+      fillers: selected.count { |image| image&.filler? },
       uploaded: selected.count { |image| image&.upload? },
       ai: selected.count { |image| image&.ai? },
       missing: selected.count(&:nil?) }

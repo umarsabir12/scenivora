@@ -1,0 +1,132 @@
+# Filler clips: mood footage for scenes with no specific subject ("the years passed", "a storm was
+# coming"), and for scenes waiting for an AI image. Each was checked by eye and is public domain or
+# under a licence the app accepts. era: "old" suits historical videos, "modern" is kept out of them.
+# Taken from Wikimedia Commons; regenerate the URLs only by checking each clip again.
+---
+- mood: night_sky
+  era: any
+  title: Stars and Clouds Over Headstone Rock (30230087163)
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/1/12/Stars_and_Clouds_Over_Headstone_Rock_%2830230087163%29.webm/Stars_and_Clouds_Over_Headstone_Rock_%2830230087163%29.webm.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/1/12/Stars_and_Clouds_Over_Headstone_Rock_%2830230087163%29.webm/960px--Stars_and_Clouds_Over_Headstone_Rock_%2830230087163%29.webm.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:Stars_and_Clouds_Over_Headstone_Rock_(30230087163).webm
+  credit: Joshua Tree National Park
+  license: Public domain
+  duration_ms: 14181
+- mood: sea
+  era: old
+  title: Rough Sea at Dover 1896 Birt Acres Robert W Paul
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/8/85/Rough_Sea_at_Dover_1896_Birt_Acres_Robert_W_Paul.webm/Rough_Sea_at_Dover_1896_Birt_Acres_Robert_W_Paul.webm.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/8/85/Rough_Sea_at_Dover_1896_Birt_Acres_Robert_W_Paul.webm/960px--Rough_Sea_at_Dover_1896_Birt_Acres_Robert_W_Paul.webm.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:Rough_Sea_at_Dover_1896_Birt_Acres_Robert_W_Paul.webm
+  credit: Robert W Paul
+  license: Public domain
+  duration_ms: 17464
+- mood: sea
+  era: any
+  title: Sea Arran1
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/2/24/Sea_Arran1.ogv/Sea_Arran1.ogv.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/2/24/Sea_Arran1.ogv/960px--Sea_Arran1.ogv.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:Sea_Arran1.ogv
+  credit: Secretlondon
+  license: CC BY-SA 3.0
+  duration_ms: 14600
+- mood: clouds
+  era: any
+  title: Timelapse of Clouds over Bellevue Canyon
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/d/d5/Timelapse_of_Clouds_over_Bellevue_Canyon.webm/Timelapse_of_Clouds_over_Bellevue_Canyon.webm.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d5/Timelapse_of_Clouds_over_Bellevue_Canyon.webm/960px--Timelapse_of_Clouds_over_Bellevue_Canyon.webm.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:Timelapse_of_Clouds_over_Bellevue_Canyon.webm
+  credit: Extemporalist
+  license: CC0
+  duration_ms: 30000
+- mood: clouds
+  era: any
+  title: Timelapse Joshua Tree Clouds and Sunset Near West Entrance
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/c/c7/Timelapse_Joshua_Tree_Clouds_and_Sunset_Near_West_Entrance.webm/Timelapse_Joshua_Tree_Clouds_and_Sunset_Near_West_Entrance.webm.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c7/Timelapse_Joshua_Tree_Clouds_and_Sunset_Near_West_Entrance.webm/960px--Timelapse_Joshua_Tree_Clouds_and_Sunset_Near_West_Entrance.webm.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:Timelapse_Joshua_Tree_Clouds_and_Sunset_Near_West_Entrance.webm
+  credit: Joshua Tree National Park
+  license: Public domain
+  duration_ms: 15055
+- mood: landscape
+  era: any
+  title: Grand Canyon Nat Park- Time-lapse Video from Yaki Point (8931531533)
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/a/a8/Grand_Canyon_Nat_Park-_Time-lapse_Video_from_Yaki_Point_%288931531533%29.webm/Grand_Canyon_Nat_Park-_Time-lapse_Video_from_Yaki_Point_%288931531533%29.webm.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a8/Grand_Canyon_Nat_Park-_Time-lapse_Video_from_Yaki_Point_%288931531533%29.webm/960px--Grand_Canyon_Nat_Park-_Time-lapse_Video_from_Yaki_Point_%288931531533%29.webm.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:Grand_Canyon_Nat_Park-_Time-lapse_Video_from_Yaki_Point_(8931531533).webm
+  credit: Grand Canyon NPS
+  license: Public domain
+  duration_ms: 44980
+- mood: fire
+  era: any
+  title: Fire آتش 08
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/c/cf/Fire_%D8%A2%D8%AA%D8%B4_08.ogv/Fire_%D8%A2%D8%AA%D8%B4_08.ogv.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/c/cf/Fire_%D8%A2%D8%AA%D8%B4_08.ogv/960px--Fire_%D8%A2%D8%AA%D8%B4_08.ogv.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:Fire_%D8%A2%D8%AA%D8%B4_08.ogv
+  credit: Mostafameraji
+  license: CC0
+  duration_ms: 20760
+- mood: rain
+  era: any
+  title: RainingWebm
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/b/b5/RainingWebm.webm/RainingWebm.webm.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b5/RainingWebm.webm/960px--RainingWebm.webm.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:RainingWebm.webm
+  credit: Beachfront B-Roll
+  license: CC BY 3.0
+  duration_ms: 59025
+- mood: forest
+  era: any
+  title: Off Fairmead Road High Beech Epping Forest Essex England 04
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/d/d1/Off_Fairmead_Road_High_Beech_Epping_Forest_Essex_England_04.webm/Off_Fairmead_Road_High_Beech_Epping_Forest_Essex_England_04.webm.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/d/d1/Off_Fairmead_Road_High_Beech_Epping_Forest_Essex_England_04.webm/960px--Off_Fairmead_Road_High_Beech_Epping_Forest_Essex_England_04.webm.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:Off_Fairmead_Road_High_Beech_Epping_Forest_Essex_England_04.webm
+  credit: Acabashi
+  license: CC BY-SA 4.0
+  duration_ms: 31388
+- mood: forest
+  era: any
+  title: From the mountain high, the forest stretches like a green ocean, kissed by
+    mist and rain — a silent breath of nature, and continue with move on
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/f/ff/From_the_mountain_high%2C_the_forest_stretches_like_a_green_ocean%2C_kissed_by_mist_and_rain_%E2%80%94_a_silent_breath_of_nature%2C_and_continue_with_move_on.webm/From_the_mountain_high%2C_the_forest_stretches_like_a_green_ocean%2C_kissed_by_mist_and_rain_%E2%80%94_a_silent_breath_of_nature%2C_and_continue_with_move_on.webm.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/f/ff/From_the_mountain_high%2C_the_forest_stretches_like_a_green_ocean%2C_kissed_by_mist_and_rain_%E2%80%94_a_silent_breath_of_nature%2C_and_continue_with_move_on.webm/960px--From_the_mountain_high%2C_the_forest_stretches_like_a_green_ocean%2C_kissed_by_mist_and_rain_%E2%80%94_a_silent_breath_of_nature%2C_and_continue_with_move_on.webm.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:From_the_mountain_high,_the_forest_stretches_like_a_green_ocean,_kissed_by_mist_and_rain_%E2%80%94_a_silent_breath_of_nature,_and_continue_with_move_on.webm
+  credit: Mathanprasath K
+  license: CC BY 4.0
+  duration_ms: 14545
+- mood: city
+  era: modern
+  title: Time-lapse of New York City skyline July 2023
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/9/97/Time-lapse_of_New_York_City_skyline_July_2023.webm/Time-lapse_of_New_York_City_skyline_July_2023.webm.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/9/97/Time-lapse_of_New_York_City_skyline_July_2023.webm/960px--Time-lapse_of_New_York_City_skyline_July_2023.webm.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:Time-lapse_of_New_York_City_skyline_July_2023.webm
+  credit: David Schwab
+  license: CC BY 3.0
+  duration_ms: 1221153
+- mood: harbour
+  era: modern
+  title: Eteläsatama timelapse 2
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/e/e1/Etel%C3%A4satama_timelapse_2.webm/Etel%C3%A4satama_timelapse_2.webm.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e1/Etel%C3%A4satama_timelapse_2.webm/960px--Etel%C3%A4satama_timelapse_2.webm.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:Etel%C3%A4satama_timelapse_2.webm
+  credit: MKFI
+  license: Public domain
+  duration_ms: 88600
+- mood: mist
+  era: any
+  title: Misty river 47 seconds
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/9/9e/Misty_river_47_seconds.webm/Misty_river_47_seconds.webm.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9e/Misty_river_47_seconds.webm/960px--Misty_river_47_seconds.webm.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:Misty_river_47_seconds.webm
+  credit: Digitura
+  license: CC0
+  duration_ms: 47180
+- mood: mist
+  era: any
+  title: Lago di Lases - Bruma mattutina
+  video_url: https://upload.wikimedia.org/wikipedia/commons/transcoded/7/7e/Lago_di_Lases_-_Bruma_mattutina.webm/Lago_di_Lases_-_Bruma_mattutina.webm.480p.vp9.webm
+  poster_url: https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7e/Lago_di_Lases_-_Bruma_mattutina.webm/960px--Lago_di_Lases_-_Bruma_mattutina.webm.jpg?utm_source=en.wikipedia.org&utm_campaign=imageinfo
+  page_url: https://commons.wikimedia.org/wiki/File:Lago_di_Lases_-_Bruma_mattutina.webm
+  credit: Syrio
+  license: CC BY-SA 4.0
+  duration_ms: 23540

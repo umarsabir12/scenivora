@@ -191,7 +191,8 @@ the providers, downloads and ffmpeg are replaced with fakes.
   the YouTube details (`yt_title`, `yt_description`, `yt_tags`, `yt_category`).
 - `CreditTransaction`: every change to a user's credit balance.
 - `ApiUsage`: one row per paid API call batch (provider, operation, units, estimated cost).
-  Operations: `research`, `script`, `voice`, `director_plan`, `scene_plan`, `candidate_rank`, `image_check`, `picture_scout`, `ai_image`, `metadata`.
+  Operations: `research`, `script`, `voice`, `director_plan`, `scene_plan`, `image_check`, `picture_scout`, `ai_image`, `metadata`
+  (older projects may also have `candidate_rank`, from a relevance check that was replaced by scoring in code).
 
 ### Create video
 
@@ -272,15 +273,25 @@ plan reads the same research (and the pictures found in its articles) instead of
    errors are retried. The first 2 scenes (the hook) and scenes marked `prefer: video` also look for
    video (360p or better): first in the Commons categories of the scene's articles, then with the
    planner's own queries, where the title must share a real word with the query.
-5. **Relevance check** (`Ai::CandidateRanker`, one text call per project, ~$0.0006): judges every
-   candidate by its title, description, date and categories, removes off-topic ones and orders the rest.
-   Rules: a modern photo doesn't show a historical moment (but is right for scenes about today), and for
-   a scene about a specific place the candidate's metadata must mention that place.
+5. **Scoring** (`Media::CandidateScore`, free, no AI): scores every candidate from what Wikimedia says
+   about it and keeps only the best 4 that score at least 6 (`MAX_CHECKED`, `MIN_SCORE`), so the paid
+   picture check sees fewer, better pictures. Points for words the scene's search terms, names and
+   visual intent share with the file name (worth most), categories and description; for coming from
+   the scene's own article (the first article most); for a date within 3 years of the scene's year;
+   and for being the file the plan names. Points off for a photo taken 20+ years after a historical
+   moment (little for a later portrait of a person, nothing when the scene speaks of today) and for
+   maps, logos, stamps and the like unless the scene asks for one. Words in most of the video's
+   pictures (the topic's own name) count for little. Near-copies in a numbered series
+   ("..._aerial_01", "_02") count once. Tested offline on 78 scenes of three projects: the picture the
+   AI check had approved was in the kept 4 for 14 of 19 scenes (11 with the old order), and the
+   check's previews fell by about 45%.
 6. **Picture check** (`Ai::ImageVerifier`, one call per scene with up to 6 small previews, ~$0.002 per
    scene; if that call fails, the first 3 are checked alone): looks at the pictures and keeps one only if it shows the scene's actual subject in the right
    era, without large watermarks or burned-in text. A kept picture is marked **✓ Checked**. If none
-   passes, the scene's picture is deselected and the scene is marked **AI image suggested**, so nothing
-   unchecked reaches the video. If the check itself fails, the scene is marked for manual review.
+   passes (or nothing scored high enough), a scene about a real subject is marked **AI image
+   suggested**, so nothing unchecked reaches the video, while a mood scene (planner subject type
+   `abstract` or `generic_scene`) gets filler footage instead (below). If the check itself fails, the
+   scene is marked for manual review.
 7. **Picture scout** (`Ai::PictureScout`, `OPENAI_SCOUT_MODEL`, default `gpt-5-mini`, about 1-2
    cents a scene): each scene still without a picture (at most 10 per run, hook scenes first) gets a
    small search agent. It has three tools: a Commons search, an article's pictures and Commons
@@ -288,6 +299,15 @@ plan reads the same research (and the pictures found in its articles) instead of
    before choosing, and has at most 6 model calls. It may only choose a picture it found and looked
    at, and its choice still goes through the picture check. Scenes it finds nothing for keep their
    AI suggestion.
+8. **Filler footage** (`Media::Fillers`, free): a fixed, hand-checked list of mood clips from
+   Wikimedia Commons in `config/fillers.yml` (night sky, sea, clouds, landscape, fire, rain, forest,
+   city, harbour, mist), all public domain or under an accepted licence. The clip is picked by the
+   scene's words ("sailed" → sea, "legend" → mist, "war" → fire; calm clouds or mist otherwise),
+   without repeating a clip while others are left, and with no modern city footage in a video whose
+   brief, scene or research names a year before 1960. Mood scenes keep their filler (badge
+   **Filler**). Scenes waiting for an AI image show a filler meanwhile, so the storyboard has no gaps
+   and can be approved before every AI image is made; the AI image replaces it when generated.
+   Scenes whose planning failed stay empty, so the retry message shows.
 
 If the AI provider's account runs out of credit, the run stops (`Ai::OutOfCredits`) instead of
 keeping unchecked pictures, and **Create video** says so.
@@ -302,8 +322,8 @@ all of them. Pictures you pick, upload or generate are marked as your choice and
 narration, with **Swap image**, **Upload** and **Remove**. **Swap image** opens the side panel for that
 scene, showing its candidates (click one to select it) and a free Commons search box. Uploads accept
 JPEG, PNG or WebP up to 10 MB. **Approve scenes & continue** is enabled once every scene has an image;
-it sets the project to `scenes_ready` and opens the Music step. A scene waiting for an AI image has no
-selected picture, so approval waits until it gets one.
+it sets the project to `scenes_ready` and opens the Music step. A scene waiting for an AI image shows
+filler footage until the AI image is made, so it doesn't hold approval up.
 
 **AI images.** The swap panel's **AI generate** tab lets you describe an image and generate it for
 credits (`CreditPricing.ai_image`, a placeholder of 5 until pricing is decided). Credits are charged

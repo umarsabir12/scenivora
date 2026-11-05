@@ -40,7 +40,7 @@ module Media
         provider: provider,
         image_url: info["thumburl"] || info["url"],
         page_url: info["descriptionurl"],
-        credit: plain_text(meta.dig("Artist", "value")).presence || "Wikimedia Commons contributor",
+        credit: CommonsMetadata.artist(meta) || "Wikimedia Commons contributor",
         license: license,
         source_article: source_article,
         **CommonsMetadata.details(meta)
