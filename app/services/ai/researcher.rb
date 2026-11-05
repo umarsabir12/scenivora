@@ -23,7 +23,10 @@ module Ai
     DOMAINS = %w[en.wikipedia.org britannica.com bbc.com bbc.co.uk theguardian.com reuters.com apnews.com nytimes.com
                  washingtonpost.com npr.org espn.com smithsonianmag.com nationalgeographic.com history.com].freeze
     STORY_STATUSES = %w[verified attributed unverified].freeze
-    MAX_SEARCHES = 10
+    # A small model with a few searches is enough to gather facts and article titles: about $0.05
+    # a video, against $0.40 with gpt-5.5. OPENAI_RESEARCH_MODEL overrides it.
+    DEFAULT_MODEL = "gpt-5-mini".freeze
+    MAX_SEARCHES = 6
     MAX_FACTS = 20
     MAX_ARTICLES = 12
     MAX_SUBJECTS = 25
@@ -62,7 +65,11 @@ module Ai
         'HMS Calypso (D61)'. Do not invent articles.
     PROMPT
 
-    def initialize(generator: Ai::ResearchGenerator.new, titles: Media::WikipediaTitles.new)
+    def self.model
+      ENV["OPENAI_RESEARCH_MODEL"].presence || DEFAULT_MODEL
+    end
+
+    def initialize(generator: Ai::ResearchGenerator.new(model: Researcher.model), titles: Media::WikipediaTitles.new)
       @generator = generator
       @titles = titles
     end
@@ -73,7 +80,8 @@ module Ai
     end
 
     def call(project)
-      response = @generator.call(instructions: PROMPT, input: input_for(project), domains: DOMAINS, max_searches: MAX_SEARCHES)
+      response = @generator.call(instructions: PROMPT, input: input_for(project), domains: DOMAINS, max_searches: MAX_SEARCHES,
+                                 effort: "low")
       data = parse_json(response.text)
       articles, subjects, dropped = with_real_articles(strings(data["articles"], MAX_ARTICLES), subjects_from(data["visual_subjects"]))
 

@@ -60,8 +60,19 @@ class Ai::ResearcherTest < ActiveSupport::TestCase
     assert_equal "en.wikipedia.org", generator.args[:domains].first
     assert_includes generator.args[:domains], "bbc.co.uk"
     assert_equal Ai::Researcher::MAX_SEARCHES, generator.args[:max_searches]
+    assert_equal "low", generator.args[:effort]
     assert_includes generator.args[:input], "Brief: Prince Philip: the baby smuggled"
     assert_includes generator.args[:input], "The creator's instructions: Focus on the escape."
+  end
+
+  test "researches with the small model unless OPENAI_RESEARCH_MODEL says otherwise" do
+    previous = ENV["OPENAI_RESEARCH_MODEL"]
+    ENV.delete("OPENAI_RESEARCH_MODEL")
+    assert_equal "gpt-5-mini", Ai::Researcher.model
+    ENV["OPENAI_RESEARCH_MODEL"] = "gpt-5.5"
+    assert_equal "gpt-5.5", Ai::Researcher.model
+  ensure
+    ENV["OPENAI_RESEARCH_MODEL"] = previous
   end
 
   test "keeps facts and subjects, and only real article titles" do

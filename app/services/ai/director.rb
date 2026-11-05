@@ -5,7 +5,7 @@ module Ai
   # as the scene planner. Article titles are checked against Wikipedia afterwards, so invented ones
   # never reach the search. Projects with research are planned by the cheap scene planner instead.
   #
-  # OPENAI_DIRECTOR_MODEL also sets the model of the research before the script; "off" turns both off.
+  # OPENAI_DIRECTOR_MODEL=off turns off both the Director and the research before the script.
   class Director
     # facts: what the research established, shown to later steps. dropped_articles: titles that
     # don't exist on Wikipedia and were removed.
