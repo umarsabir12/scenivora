@@ -3,7 +3,8 @@ class Scene < ApplicationRecord
   has_many :images, -> { order(:id) }, class_name: "SceneImage", dependent: :destroy
 
   validates :position, numericality: { only_integer: true, greater_than: 0 }, uniqueness: { scope: :project_id }
-  validates :text, presence: true
+  # A storyboard scene may wait for its narration (a scene the user just added); approval asks for it.
+  validates :text, presence: true, unless: -> { project&.storyboard? }
   validates :start_ms, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :duration_ms, numericality: { only_integer: true, greater_than: 0 }
 

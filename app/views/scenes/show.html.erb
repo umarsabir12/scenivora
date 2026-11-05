@@ -90,18 +90,22 @@
       <section class="min-w-0 space-y-4" aria-labelledby="scenes-heading">
         <div class="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 id="scenes-heading" class="text-2xl font-semibold tracking-tight">Storyboard</h2>
-            <p class="mt-1 text-sm text-zinc-400">
-              <%= pluralize(@scenes.size, "scene") %> · <%= format_timecode(@scenes.last.end_ms) %> narration<%= " (estimated until the voice is made)" if @project.storyboard? && !@project.music_available? %>
+            <%# The top nav already names the step; the heading stays for screen readers. %>
+            <h2 id="scenes-heading" class="sr-only">Storyboard</h2>
+            <p class="text-sm text-zinc-400">
+              <%= pluralize(@scenes.size, "scene") %> · <span data-storyboard-length><%= format_timecode(@scenes.last.end_ms) %></span> narration<%= " (estimated until the voice is made)" if @project.storyboard? && !@project.music_available? %>
             </p>
             <% if @project.storyboard? %>
-              <p class="mt-1 text-xs text-zinc-500">Edit any scene's narration or picture, then approve the storyboard to make the voice.</p>
+              <p class="mt-1 text-xs text-zinc-500">Edit any scene's narration or picture (changes save as you type), then approve the storyboard to make the voice.</p>
             <% end %>
           </div>
           <div class="flex flex-wrap gap-2 text-xs font-medium">
             <span class="rounded-full bg-emerald-500/15 px-2.5 py-1 text-emerald-300"><%= pluralize(counts[:free], "free image") %></span>
             <% if counts[:videos].positive? %>
               <span class="rounded-full bg-sky-500/15 px-2.5 py-1 text-sky-300"><%= pluralize(counts[:videos], "video") %></span>
+            <% end %>
+            <% if counts[:fillers].positive? %>
+              <span class="rounded-full bg-zinc-700 px-2.5 py-1 text-zinc-200"><%= pluralize(counts[:fillers], "filler") %></span>
             <% end %>
             <% if counts[:ai].positive? %>
               <span class="rounded-full bg-violet-500/15 px-2.5 py-1 text-violet-300"><%= pluralize(counts[:ai], "AI image") %></span>
@@ -133,11 +137,12 @@
             <% image = scene.selected_image %>
             <% current = scene == @current_scene %>
             <li id="scene_<%= scene.id %>"
-                class="flex cursor-pointer flex-col gap-4 rounded-2xl border border-white/5 bg-[#161920] p-4 transition hover:border-white/15 sm:flex-row aria-[current=true]:border-amber-400/60 aria-[current=true]:bg-amber-400/[0.03]"
+                class="flex cursor-pointer flex-col gap-4 rounded-2xl border border-white/5 bg-[#161920] p-4 transition hover:border-white/15 sm:h-[194px] sm:flex-row aria-[current=true]:border-amber-400/60 aria-[current=true]:bg-amber-400/[0.03]"
                 aria-current="<%= current ? "true" : "false" %>"
                 data-controller="card-link" data-action="click->card-link#open"
                 data-card-link-url-value="<%= project_scenes_path(@project, scene: scene.id) %>">
-              <div class="relative aspect-video w-full shrink-0 overflow-hidden rounded-xl bg-white/5 sm:w-48">
+              <%# Every card has the same 16:9 picture box, for images and videos alike, so cards share one height. %>
+              <div class="relative aspect-video w-full shrink-0 overflow-hidden rounded-xl bg-white/5 sm:w-72">
                 <% if image %>
                   <%= image_tag scene_image_src(image), alt: "#{image.video? ? "Video" : "Image"} for scene #{scene.position}", loading: "lazy",
                         class: "h-full w-full object-cover #{"opacity-30" if scene.ai_generating?}" %>
@@ -158,72 +163,67 @@
                 <% end %>
               </div>
 
-              <div class="min-w-0 flex-1 space-y-2">
+              <% autosave = @project.storyboard? %>
+              <div class="flex min-w-0 flex-1 flex-col gap-2"
+                   <%= tag.attributes(data: { controller: "scene-autosave", scene_autosave_url_value: scene_path(scene, format: :json) }) if autosave %>>
                 <div class="flex flex-wrap items-center gap-2 text-xs">
-                  <span class="font-medium text-zinc-300">Scene <%= scene.position %> · <%= format_timecode(scene.start_ms) %></span>
-                  <% if image %>
-                    <%= image_source_badge(image) %>
-                    <span class="text-zinc-500"><%= image.license %></span>
-                  <% end %>
+                  <span class="font-medium text-zinc-300">
+                    Scene <%= scene.position %> · <span data-scene-start="<%= scene.id %>"><%= format_timecode(scene.start_ms) %></span>
+                  </span>
+                  <%= image_source_badge(image) if image %>
                   <%= media_check_badge(scene) %>
+                  <% if scene.text.blank? %>
+                    <span class="rounded-md bg-amber-400/15 px-1.5 py-0.5 font-medium text-amber-300">Needs narration</span>
+                  <% end %>
+                  <% if autosave %>
+                    <span class="ml-auto text-zinc-500" aria-live="polite" data-scene-autosave-target="status"></span>
+                    <div class="relative" data-controller="menu">
+                      <button type="button" class="-my-1 rounded-lg p-1.5 text-zinc-400 hover:bg-white/5 hover:text-zinc-200 cursor-pointer"
+                              aria-label="Options for scene <%= scene.position %>" aria-haspopup="menu" aria-expanded="false"
+                              data-menu-target="button" data-action="menu#toggle">
+                        <svg viewBox="0 0 20 20" fill="currentColor" class="h-4 w-4" aria-hidden="true">
+                          <circle cx="10" cy="4" r="1.6" /><circle cx="10" cy="10" r="1.6" /><circle cx="10" cy="16" r="1.6" />
+                        </svg>
+                      </button>
+                      <div hidden role="menu" data-menu-target="list"
+                           class="absolute right-0 top-7 z-20 w-44 rounded-xl border border-white/10 bg-[#1d2129] p-1 shadow-xl shadow-black/40">
+                        <%= button_to "Add scene after", add_after_scene_path(scene), method: :post, role: "menuitem",
+                              class: "block w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-200 hover:bg-white/5 cursor-pointer" %>
+                        <% if @scenes.size > 1 %>
+                          <%= button_to "Delete scene", scene_path(scene), method: :delete, role: "menuitem",
+                                form: { data: { turbo_confirm: "Delete scene #{scene.position} and its narration?" } },
+                                class: "block w-full rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-500/10 cursor-pointer" %>
+                        <% end %>
+                      </div>
+                    </div>
+                  <% end %>
                 </div>
 
-                <% if @project.storyboard? %>
-                  <%= form_with model: scene, url: scene_path(scene), method: :patch, class: "space-y-2" do |form| %>
-                    <%= form.label :text, "Narration for scene #{scene.position}", class: "sr-only" %>
-                    <%= form.text_area :text, rows: 3, maxlength: StoryboardScenesController::MAX_TEXT,
-                          class: "#{field_classes.sub("mt-1 ", "")} resize-y text-sm" %>
-                    <%= form.submit "Save text", class: small_button_classes %>
-                  <% end %>
+                <% if autosave %>
+                  <%= label_tag "scene_#{scene.id}_text", "Narration for scene #{scene.position}", class: "sr-only" %>
+                  <%# Fills the card's height and scrolls inside it, so long narration doesn't stretch the card. %>
+                  <%= text_area_tag "scene[text]", scene.text, id: "scene_#{scene.id}_text", rows: 4,
+                        maxlength: StoryboardScenesController::MAX_TEXT, placeholder: "Write this scene's narration…",
+                        autofocus: flash[:new_scene_id] == scene.id || (current && scene.text.blank?),
+                        class: "#{field_classes.sub("mt-1 ", "")} min-h-0 flex-1 resize-none text-sm",
+                        data: { scene_autosave_target: "field", action: "input->scene-autosave#queue blur->scene-autosave#save" } %>
                 <% else %>
                   <p class="text-sm text-zinc-200"><%= scene.text %></p>
                 <% end %>
-                <% if image && scene.media_note.present? && scene.media_check != "ai_suggested" %>
-                  <p class="text-xs text-zinc-500"><%= scene.media_note %></p>
-                <% end %>
 
-                <% if image %>
-                  <p class="truncate text-xs text-zinc-500">
-                    Credit:
-                    <% if image.page_url.present? %>
-                      <%= link_to image.credit, image.page_url, target: "_blank", rel: "noopener", class: "hover:text-zinc-300 hover:underline" %>
-                    <% else %>
-                      <%= image.credit %>
-                    <% end %>
-                  </p>
-                <% elsif scene.ai_suggested? %>
-                  <p class="text-xs text-violet-200"><%= scene.media_note %></p>
-                  <%= link_to "Generate AI image", project_scenes_path(@project, scene: scene.id, source: "ai"),
-                        class: "inline-block text-xs font-medium text-violet-300 hover:underline",
-                        data: { action: "card-link#select:prevent", card_link_url_param: project_scenes_path(@project, scene: scene.id, source: "ai") } %>
-                <% elsif scene.search_error.present? %>
+                <% if image.nil? && scene.search_error.present? && !scene.ai_suggested? %>
                   <p class="text-xs text-red-300" role="alert"><%= scene.search_error %></p>
-                <% else %>
-                  <p class="text-xs text-zinc-500">No free image found. Search again, generate one with AI, or upload your own.</p>
                 <% end %>
 
-                <div class="flex flex-wrap gap-2 pt-1">
-                  <%= link_to "Swap image", project_scenes_path(@project, scene: scene.id), class: small_button_classes,
-                        data: { action: "card-link#select:prevent" } %>
-
-                  <%= form_with url: scene_images_path(scene), multipart: true, data: { controller: "auto-submit" } do |form| %>
-                    <label class="<%= small_button_classes %>">
-                      Upload
-                      <%= form.file_field :file, accept: SceneImage::UPLOAD_TYPES.join(","), class: "sr-only",
-                            data: { action: "change->auto-submit#submit" } %>
-                    </label>
-                  <% end %>
-
-                  <% if image %>
-                    <%= button_to "Remove", scene_clear_image_path(scene), method: :delete,
-                          class: "rounded-lg px-3 py-1.5 text-xs font-semibold text-zinc-400 hover:bg-white/5 hover:text-zinc-200 cursor-pointer" %>
-                  <% end %>
-                  <% if @project.storyboard? && @scenes.size > 1 %>
-                    <%= button_to "Delete scene", scene_path(scene), method: :delete,
-                          form: { data: { turbo_confirm: "Delete scene #{scene.position} and its narration?" } },
-                          class: "rounded-lg px-3 py-1.5 text-xs font-semibold text-red-300/80 hover:bg-red-500/10 hover:text-red-300 cursor-pointer" %>
-                  <% end %>
-                </div>
+                <%# A scene waiting for an AI image may show filler footage meanwhile; the reason is the link's hover text. %>
+                <% if scene.ai_suggested? || (image.nil? && !scene.ai_generating?) %>
+                  <div class="pt-1">
+                    <%= link_to "Generate AI image", project_scenes_path(@project, scene: scene.id, source: "ai"),
+                          title: (scene.media_note if scene.ai_suggested?),
+                          class: "inline-block rounded-lg border border-violet-400/30 px-3 py-1.5 text-xs font-semibold text-violet-200 hover:bg-violet-500/10",
+                          data: { action: "card-link#select:prevent", card_link_url_param: project_scenes_path(@project, scene: scene.id, source: "ai") } %>
+                  </div>
+                <% end %>
               </div>
             </li>
           <% end %>
@@ -233,7 +233,7 @@
       <%# Card clicks and tabs load only this frame. Forms inside it update the whole page (target _top). %>
       <turbo-frame id="swap_panel" target="_top" data-turbo-action="advance" class="self-start lg:sticky lg:top-24">
       <aside id="swap" class="rounded-2xl border border-white/5 bg-[#161920] p-5" aria-labelledby="swap-heading">
-        <h2 id="swap-heading" class="text-lg font-semibold">Swap image · Scene <%= @current_scene.position %></h2>
+        <h2 id="swap-heading" class="text-lg font-semibold">Picture · Scene <%= @current_scene.position %></h2>
         <p class="mt-1 text-sm text-zinc-400">Free sources first. AI only when nothing fits.</p>
 
         <% tab = "rounded-lg px-3 py-1.5" %>
@@ -275,6 +275,27 @@
             from <%= format_timecode(selected.clip_start_ms.to_i) %>.
           </p>
         <% end %>
+
+        <% if selected && !selected.stored_file? %>
+          <p class="mt-3 truncate text-xs text-zinc-500">
+            In use: <%= link_to selected.credit, selected.page_url, target: "_blank", rel: "noopener", class: "hover:text-zinc-300 hover:underline" %>
+            · <%= selected.license %>
+          </p>
+        <% end %>
+
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <%= form_with url: scene_images_path(@current_scene), multipart: true, data: { controller: "auto-submit" } do |form| %>
+            <label class="<%= small_button_classes %> cursor-pointer">
+              Upload image
+              <%= form.file_field :file, accept: SceneImage::UPLOAD_TYPES.join(","), class: "sr-only",
+                    data: { action: "change->auto-submit#submit" } %>
+            </label>
+          <% end %>
+          <% if selected %>
+            <%= button_to "Remove image", scene_clear_image_path(@current_scene), method: :delete,
+                  class: "rounded-lg px-3 py-1.5 text-xs font-semibold text-zinc-400 hover:bg-white/5 hover:text-zinc-200 cursor-pointer" %>
+          <% end %>
+        </div>
 
         <% candidates = @current_scene.images %>
         <% if candidates.any? %>

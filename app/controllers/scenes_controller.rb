@@ -29,13 +29,17 @@ class ScenesController < ApplicationController
     redirect_to project_scenes_path(@project), alert: "Not enough credits to finish. Some images may have started."
   end
 
-  # Every scene needs an image before the project moves on to music.
+  # Every scene needs narration and an image before the project moves on.
   def approve
     scenes = @project.scenes.includes(:images).to_a
     missing = scenes.reject(&:selected_image)
+    unwritten = scenes.select { |scene| scene.text.blank? }
 
     if scenes.empty?
       redirect_to project_scenes_path(@project), alert: "Create scenes before approving them."
+    elsif unwritten.any?
+      redirect_to project_scenes_path(@project, scene: unwritten.first.id),
+        alert: "#{helpers.pluralize(unwritten.size, "scene")} still #{unwritten.size == 1 ? "needs" : "need"} narration."
     elsif missing.any?
       redirect_to project_scenes_path(@project, scene: missing.first.id),
         alert: "#{helpers.pluralize(missing.size, "scene")} still need an image."

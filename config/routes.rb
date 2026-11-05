@@ -26,8 +26,10 @@ Rails.application.routes.draw do
     end
   end
 
-  # A storyboard scene's narration: edit or delete it.
-  resources :scenes, only: %i[update destroy], controller: "storyboard_scenes"
+  # A storyboard scene's narration: edit or delete it, or add an empty scene after it.
+  resources :scenes, only: %i[update destroy], controller: "storyboard_scenes" do
+    post :add_after, on: :member
+  end
 
   scope "scenes/:scene_id", as: "scene" do
     resources :images, only: :create, controller: "scene_images" do

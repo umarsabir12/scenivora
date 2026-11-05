@@ -62,6 +62,42 @@ class ScenesControllerTest < ActionDispatch::IntegrationTest
     assert @project.reload.scenes_ready?
   end
 
+  test "a storyboard with a scene still waiting for narration can't be approved" do
+    scene = storyboard!(step: "done")
+    scene.images.create!(provider: "wikipedia_article", image_url: "https://upload.wikimedia.org/c.jpg", credit: "x",
+                         license: "Public domain", selected: true)
+    empty = @project.scenes.create!(position: 2, text: "", start_ms: 2_000, duration_ms: 2_000)
+    empty.images.create!(provider: "wikimedia_commons", image_url: "https://upload.wikimedia.org/d.jpg", credit: "x",
+                         license: "CC0", selected: true)
+
+    post approve_project_scenes_url(@project)
+
+    assert_redirected_to project_scenes_url(@project, scene: empty.id)
+    assert_equal "1 scene still needs narration.", flash[:alert]
+    assert_not @project.reload.scenes_ready?
+  end
+
+  test "a storyboard card saves as you type, keeps scene actions in its menu and pictures in the side panel" do
+    scene = storyboard!(step: "done")
+    scene.images.create!(provider: "wikipedia_article", image_url: "https://upload.wikimedia.org/c.jpg", credit: "Archive",
+                         license: "Public domain", selected: true, page_url: "https://commons.wikimedia.org/wiki/File:C.jpg")
+
+    get project_scenes_url(@project)
+
+    assert_select "[data-controller~='scene-autosave'][data-scene-autosave-url-value=?]", scene_path(scene, format: :json)
+    assert_select "input[type=submit][value='Save text']", count: 0
+    assert_select "a", text: "Swap image", count: 0
+    assert_select "#scene_#{scene.id} p", text: /Credit:/, count: 0
+    assert_select "#scene_#{scene.id} [data-controller=menu] [role=menu]" do
+      assert_select "form[action=?] button", add_after_scene_path(scene), text: "Add scene after"
+    end
+    assert_select "#scene_#{scene.id} label", text: /Upload/, count: 0
+    assert_select "#scene_#{scene.id} form[action=?]", scene_clear_image_path(scene), count: 0
+    assert_select "#swap p", text: /In use: Archive/
+    assert_select "#swap form[action=?] label", scene_images_path(scene), text: /Upload image/
+    assert_select "#swap form[action=?] button", scene_clear_image_path(scene), text: "Remove image"
+  end
+
   test "rewrite starts a new run" do
     storyboard!(step: "done")
 
@@ -118,7 +154,7 @@ class ScenesControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to project_voice_url(@project)
   end
 
-  test "the page lists scenes with the credit, license, source and a note for scenes without images" do
+  test "cards show the source, the side panel the credit and license, and an empty scene offers AI" do
     confirmed_track
     scene = @project.scenes.create!(position: 1, text: "Tides follow the moon.", start_ms: 0, duration_ms: 60_000)
     scene.images.create!(provider: "wikimedia_commons", image_url: "https://img.example/a.jpg",
@@ -127,13 +163,14 @@ class ScenesControllerTest < ActionDispatch::IntegrationTest
     get project_scenes_url(@project)
 
     assert_select "li", text: /Tides follow the moon/
-    assert_select "span", text: "Commons"
-    assert_select "span", text: "CC BY 4.0"
-    assert_select "a[href=?]", "https://src.example/a", text: "Jane"
+    assert_select "li span", text: "Commons"
+    assert_select "li span", text: "CC BY 4.0", count: 0
+    assert_select "#swap p", text: /In use: Jane\s+· CC BY 4.0/
+    assert_select "#swap a[href=?]", "https://src.example/a", text: "Jane"
 
     scene.images.destroy_all
     get project_scenes_url(@project)
-    assert_select "p", text: /No free image found/
+    assert_select "li a", text: "Generate AI image"
   end
 
   test "another user's project cannot open or create scenes" do
@@ -211,7 +248,7 @@ class ScenesControllerTest < ActionDispatch::IntegrationTest
 
     get project_scenes_url(@project, scene: second.id)
 
-    assert_select "#swap h2", text: "Swap image · Scene 2"
+    assert_select "#swap h2", text: "Picture · Scene 2"
     assert_select "#swap button[aria-pressed=true] img[src=?]", "https://img.example/b.jpg"
     assert_select "#swap button[aria-pressed=false] img[src=?]", "https://img.example/c.jpg"
     assert_select "li#scene_#{second.id}[aria-current=true]"
@@ -361,7 +398,7 @@ class ScenesControllerTest < ActionDispatch::IntegrationTest
 
     assert_select "span", text: "✓ Checked"
     assert_select "span", text: "AI image suggested"
-    assert_select "p", text: "No real picture fits."
+    assert_select "a[title=?]", "No real picture fits.", text: "Generate AI image"
     assert_select "form[action=?] button", generate_suggested_project_scenes_path(@project),
                   text: "Generate all suggested · #{CreditPricing.ai_image} credits"
   end
