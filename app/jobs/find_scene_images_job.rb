@@ -29,6 +29,8 @@ class FindSceneImagesJob < ApplicationJob
   HOOK_SCENES = 2
   MAX_VIDEOS = 2
   MAX_VIDEO_SEARCHES = 3
+  # Scenes Pixabay footage may serve: present-day footage can show a place or a mood, not a past moment.
+  PIXABAY_VIDEO_SUBJECTS = %w[real_place generic_scene abstract].freeze
   PLANNING_FAILED = "Scene planning failed. Create scene again to retry.".freeze
 
   # Fetches each article's pictures once per run, so the library can be built from the research
@@ -336,8 +338,11 @@ class FindSceneImagesJob < ApplicationJob
       scene.update!(media_check: "ai_suggested", media_note: note)
     end
 
+    # Hook scenes, scenes the plan marks for video, and, when Pixabay is on, scenes about a real place,
+    # where present-day footage of the place (a coast, a valley from the air) carries the scene.
     def wants_video?(scene)
-      scene.position <= HOOK_SCENES || scene.plan["prefer"] == "video"
+      scene.position <= HOOK_SCENES || scene.plan["prefer"] == "video" ||
+        (pixabay_key.present? && scene.plan["subject_type"] == "real_place")
     end
 
     # Videos first, so a found video becomes the selected candidate.
@@ -364,9 +369,29 @@ class FindSceneImagesJob < ApplicationJob
     # Video is a bonus: a scene without a good video keeps its images. Footage filed in the Commons
     # category of the scene's own articles comes first. Otherwise only the planner's own queries are
     # used (broadened ones pull in unrelated footage), and a video's title must share a real word with
-    # the query, because Wikimedia matches words anywhere in a file's description.
+    # the query, because Wikimedia matches words anywhere in a file's description. Pixabay's present-day
+    # footage comes last, and only for places and moods, never for a historical event, person or object.
     def video_candidates_for(scene)
-      category_videos(scene).presence || keyword_videos(scene)
+      category_videos(scene).presence || keyword_videos(scene).presence || pixabay_videos(scene)
+    end
+
+    # The plan's queries from broad to specific: the broad ones (usually the place's name) find footage
+    # of the place itself, and every word of the query must be in a clip's tags.
+    def pixabay_videos(scene)
+      return [] unless pixabay_key.present? && PIXABAY_VIDEO_SUBJECTS.include?(scene.plan["subject_type"])
+
+      queries = [ scene.search_query, *scene.plan["search_queries"] ].compact_blank.uniq.reverse.first(MAX_VIDEO_SEARCHES)
+      queries.each do |query|
+        videos = Media::PixabayVideoSearch.new(api_key: pixabay_key).search(query, limit: MAX_VIDEOS)
+        return videos if videos.any?
+      rescue Media::Error => e
+        Rails.logger.warn("Pixabay video search failed for scene #{scene.id}: #{e.message}")
+      end
+      []
+    end
+
+    def pixabay_key
+      ENV["PIXABAY_API_KEY"].presence
     end
 
     def category_videos(scene)
@@ -451,7 +476,6 @@ class FindSceneImagesJob < ApplicationJob
 
     def search_sources(query, limit)
       results = Media::CommonsSearch.new.search(query, limit: limit)
-      pixabay_key = ENV["PIXABAY_API_KEY"].presence
       if pixabay_key && results.size < limit
         results += Media::PixabaySearch.new(api_key: pixabay_key).search(query, limit: limit - results.size)
       end

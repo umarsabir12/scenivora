@@ -205,14 +205,27 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
 
   def run_job(commons: FakeSearch.new, pixabay: nil, planner: FakePlanner.new, videos: FakeVideoSearch.new,
               verifier: FakeVerifier.new, scout: FakeScout.new, articles: FakeArticles.new, director: nil,
-              categories: FakeCategories.new)
-    with_stubbed_method(Ai::Director, :enabled?, -> { !director.nil? }) do
-      with_stubbed_new(Ai::Director, director) do
-        with_stubbed_new(Media::CommonsCategoryImages, categories) do
-          run_services(commons:, pixabay:, planner:, videos:, verifier:, scout:, articles:)
+              categories: FakeCategories.new, pixabay_key: nil, pixabay_videos: FakeVideoSearch.new)
+    with_pixabay_key(pixabay_key) do
+      with_stubbed_method(Ai::Director, :enabled?, -> { !director.nil? }) do
+        with_stubbed_new(Ai::Director, director) do
+          with_stubbed_new(Media::CommonsCategoryImages, categories) do
+            with_stubbed_new(Media::PixabayVideoSearch, pixabay_videos) do
+              run_services(commons:, pixabay:, planner:, videos:, verifier:, scout:, articles:)
+            end
+          end
         end
       end
     end
+  end
+
+  # The developer's .env may hold a real key; each test decides whether Pixabay is on.
+  def with_pixabay_key(key)
+    original = ENV["PIXABAY_API_KEY"]
+    ENV["PIXABAY_API_KEY"] = key
+    yield
+  ensure
+    ENV["PIXABAY_API_KEY"] = original
   end
 
   def run_services(commons:, pixabay:, planner:, videos:, verifier:, scout:, articles:)
@@ -372,7 +385,7 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
   end
 
   test "Pixabay is added only when there are fewer Commons results than the limit" do
-    run_job(commons: FakeSearch.new, pixabay: FakeSearch.new(provider: "pixabay"))
+    run_job(commons: FakeSearch.new, pixabay: FakeSearch.new(provider: "pixabay"), pixabay_key: "key")
 
     assert @project.reload.scenes.first.images.map(&:provider).include?("wikimedia_commons")
   end
@@ -536,6 +549,49 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert_equal 1, verifier.calls
     assert_empty scout.calls
     assert_nil @project.reload.settings["scenes_searching"]
+  end
+
+  def place_plan(subject_type, queries: [ "Corfu Mon Repos 1921", "Corfu" ])
+    plan = Ai::ScenePlanner::Plan.new(position: 1, visual_intent: "The island", subject_type: subject_type,
+                                      search_queries: queries, ai_fallback_allowed: true)
+    FakePlanner.new(plans: (1..6).to_h { |n| [ n, plan.with(position: n) ] })
+  end
+
+  def pixabay_clip(name)
+    Media::VideoResult.new(provider: "pixabay", title: "corfu, greece, sea", video_url: "https://cdn.pixabay.com/#{name}.mp4",
+                           poster_url: "https://cdn.pixabay.com/#{name}.jpg", page_url: "https://pixabay.com/videos/#{name}/",
+                           credit: "G_VIDEOMAKER on Pixabay", license: "Pixabay Content License", duration_ms: 15_000)
+  end
+
+  test "a scene about a real place gets Pixabay footage of it, searched by its broadest query first" do
+    clips = FakeVideoSearch.new(videos: [ pixabay_clip("corfu") ])
+
+    run_job(planner: place_plan("real_place"), pixabay_key: "key", pixabay_videos: clips)
+
+    assert_equal "Corfu", clips.queries.first
+    scene = @project.reload.scenes.first
+    assert scene.selected_image.video?
+    assert_equal "pixabay", scene.selected_image.provider
+    assert_equal "G_VIDEOMAKER on Pixabay", scene.selected_image.credit
+  end
+
+  test "Pixabay footage never stands in for a historical event, and is off without a key" do
+    clips = FakeVideoSearch.new(videos: [ pixabay_clip("corfu") ])
+    run_job(planner: place_plan("historical_event"), pixabay_key: "key", pixabay_videos: clips)
+    assert_empty clips.queries
+
+    run_job(planner: place_plan("real_place"), pixabay_key: nil, pixabay_videos: clips)
+    assert_empty clips.queries
+  end
+
+  test "Commons footage comes before Pixabay" do
+    clips = FakeVideoSearch.new(videos: [ pixabay_clip("corfu") ])
+    commons_videos = FakeVideoSearch.new(videos: [ video("corfu", title: "Corfu Mon Repos 1921 newsreel") ])
+
+    run_job(planner: place_plan("real_place"), pixabay_key: "key", pixabay_videos: clips, videos: commons_videos)
+
+    assert_empty clips.queries
+    assert_equal "wikimedia_commons", @project.reload.scenes.first.selected_image.provider
   end
 
   test "videos use only the planner's own queries, not broadened ones" do

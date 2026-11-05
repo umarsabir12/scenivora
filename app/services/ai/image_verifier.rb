@@ -43,7 +43,9 @@ module Ai
       - it has visible text (map labels, captions, signs) in a language other than English.
       A symbolic picture is fine only when the scene itself is about an idea rather than a specific
       moment, and it must still fit the scene's era. When the scene is about lasting effects or today,
-      a modern photo of the subject is right. You cannot identify people from their faces: judge
+      a modern photo of the subject is right. A scene set in a real place may show that same place's
+      landscape, coast or skyline as it looks today, often from the air, when nothing in view is
+      clearly modern (cars, modern buildings, people in modern clothes). You cannot identify people from their faces: judge
       people by context, clothing, era and the file title. If no picture is right, choose none.
 
       Return only JSON:
