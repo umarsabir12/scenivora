@@ -1,0 +1,25 @@
+# Models offered by the single tools in the sidebar's Create group (not YouTube projects).
+# Add a model here to offer it; a tool with no models shows "Models coming soon".
+#
+#   key:      stable id stored on each creation; don't rename one that's been used
+#   name:     shown in the model picker
+#   provider: who is called (also recorded in api_usages)
+#   model:    the provider's model name
+#   price:    the provider's price, for docs/COSTS.md and the picker's note
+#   credits:  what the user pays. PLACEHOLDER until credit pricing is decided (docs/TODO.md).
+#
+# Speech is charged per started 1,000 characters (credits_per_1000_characters).
+
+video: []
+
+image: []
+
+speech:
+  - key: openai-tts-1
+    name: OpenAI tts-1
+    provider: openai
+    model: tts-1
+    price: "$15 per 1M characters"
+    credits_per_1000_characters: 1
+
+text: []

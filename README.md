@@ -405,6 +405,21 @@ image is used), image credits for every Commons image, and the music credit. The
 editable, **Copy all details** copies them as one block, and the MP4 and thumbnail download from
 the page.
 
+### Single tools (sidebar: Create)
+
+Separate from YouTube projects: each tool makes one thing with a model the user picks, charged in
+credits by that model. The tabs are **Create video**, **Create image**, **Text to speech** and
+**Write text** (`/create/:kind`, `CreationsController`). Each page has a form and the user's last
+20 results with playback and download.
+
+- Models live in `config/creation_models.yml` (key, name, provider, model, price, credits). A tool
+  with no models shows "Models coming soon" and a **Soon** badge in the sidebar. Only **Text to
+  speech** has one so far: OpenAI `tts-1`, 1 credit per started 1,000 characters (placeholder).
+- A `Creation` row holds the tool, model, prompt, options (voice, speed), status and the file.
+  `Creation.start!` charges the credits and queues `GenerateCreationJob`, which refunds them if it
+  fails. Speech: up to 10,000 characters, voiced in parts with `NarrationParts`, joined with
+  ffmpeg into one MP3. The real cost goes to `ApiUsage` against the creation (`create_speech`).
+
 ### Captions (SRT)
 
 Voice generation makes one speech request per paragraph (`NarrationParts`; a paragraph over the
@@ -476,6 +491,7 @@ can be swapped in one place:
 | POST              | `/projects/:id/publish/generate` | Write YouTube details with AI           |
 | GET               | `/projects/:id/publish/captions` | Download SRT captions                   |
 | POST              | `/voice_samples?voice_name=…`  | Generate (once) and play a voice sample   |
+| GET, POST         | `/create/:kind`                | Single tool (video, image, speech, text): form and results; generate |
 | `/users/*`        | Devise                         | Sign up, sign in, sign out, password reset |
 
 ### Authentication

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_30_160000) do
+ActiveRecord::Schema[8.1].define(version: 2026_11_11_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -43,13 +43,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_160000) do
   end
 
   create_table "api_usages", force: :cascade do |t|
-    t.bigint "project_id", null: false
+    t.bigint "project_id"
     t.string "provider", null: false
     t.string "operation", null: false
     t.integer "units", default: 0, null: false
     t.decimal "cost_usd", precision: 10, scale: 6, default: "0.0", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "creation_id"
+    t.index ["creation_id"], name: "index_api_usages_on_creation_id"
     t.index ["project_id", "provider"], name: "index_api_usages_on_project_id_and_provider"
     t.index ["project_id"], name: "index_api_usages_on_project_id"
   end
@@ -75,6 +77,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_160000) do
     t.jsonb "timings", default: [], null: false
     t.index ["project_id", "kind"], name: "index_audio_tracks_on_project_id_and_kind", unique: true
     t.index ["project_id"], name: "index_audio_tracks_on_project_id"
+  end
+
+  create_table "creations", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "kind", null: false
+    t.string "model_key", null: false
+    t.text "prompt", null: false
+    t.jsonb "options", default: {}, null: false
+    t.string "status", default: "pending", null: false
+    t.string "error"
+    t.integer "credits_charged", default: 0, null: false
+    t.integer "duration_ms"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id", "kind", "created_at"], name: "index_creations_on_user_id_and_kind_and_created_at"
+    t.index ["user_id"], name: "index_creations_on_user_id"
   end
 
   create_table "credit_transactions", force: :cascade do |t|
@@ -183,8 +201,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_30_160000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "api_usages", "creations"
   add_foreign_key "api_usages", "projects"
   add_foreign_key "audio_tracks", "projects"
+  add_foreign_key "creations", "users"
   add_foreign_key "credit_transactions", "projects", on_delete: :nullify
   add_foreign_key "credit_transactions", "users"
   add_foreign_key "projects", "users"

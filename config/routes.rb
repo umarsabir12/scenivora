@@ -6,6 +6,12 @@ Rails.application.routes.draw do
     registrations: "users/registrations"
   }
 
+  # Single tools (sidebar's Create group): /create/speech, /create/image, ...
+  scope "create/:kind", constraints: { kind: Regexp.union(CreationModels::KINDS) } do
+    get "/", to: "creations#index", as: :creations
+    post "/", to: "creations#create"
+  end
+
   resources :projects, only: %i[index new create show] do
     resource :voice, only: %i[show create] do
       post :confirm

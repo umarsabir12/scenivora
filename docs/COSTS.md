@@ -104,6 +104,15 @@ length, or several hundred scripts with no voice-over.
 - **YouTube details:** one text-model call per **Write details** click, about $0.0005 for a
   5-minute script with `gpt-4o-mini` (estimate; recorded in `ApiUsage` as `metadata`).
 
+## Single tools (sidebar: Create)
+
+- **Text to speech:** OpenAI `tts-1`, $15 per 1M characters, so the 10,000-character maximum costs
+  about $0.15 and a 1,000-character text about $0.015. Recorded in `ApiUsage` as `create_speech`
+  against the creation. Users pay 1 credit per started 1,000 characters (placeholder, set in
+  `config/creation_models.yml`). Measured 2026-11-11: 161 characters cost $0.0024 (matches the
+  rate), 9.9 s of audio, 24 kHz mono MP3 at -24.5 LUFS (quiet; not normalised yet).
+- **Create video, Create image, Write text:** no models yet, so no cost.
+
 ## Free items
 
 - Test suite (`bin/rails test`): mocked, no network calls, no cost.
@@ -135,6 +144,7 @@ Record real charges here as you incur them. Use the OpenAI dashboard for the amo
 | 2026-10-24 | Voice sample files (9 voices)     | $0.00525     | One-time generation, saved to public/voice_samples |
 | 2026-10-26 | Scene image search (Commons, Pixabay) | $0.00 | Free sources, no paid API calls |
 | 2026-10-24 | Voice name check (rejected calls, one 1-character call) | $0.00002 | Confirmed tts-1's accepted voice names |
+| 2026-11-11 | Text to speech tool, live check (1 `tts-1` call, 161 characters) | $0.0024 | Confirmed the credit charge, recorded cost and MP3 output |
 |            |                                   |              |                                |
 
 ## Revision history

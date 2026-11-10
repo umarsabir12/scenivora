@@ -1,0 +1,97 @@
+<% content_for :title, "#{@title} · Scenivora" %>
+<% content_for :head, turbo_refreshes_with(method: :morph, scroll: :preserve) %>
+<%= turbo_stream_from current_user, :creations %>
+
+<div class="mx-auto max-w-5xl space-y-6">
+  <header>
+    <h1 class="text-2xl font-semibold tracking-tight"><%= @title %></h1>
+    <p class="mt-1 text-sm text-zinc-400">Pick a model and pay credits by the model you choose. Separate from your YouTube projects.</p>
+  </header>
+
+  <% if @models.empty? || @kind != "speech" %>
+    <section class="rounded-2xl border border-dashed border-white/10 bg-[#161920] p-6 text-center">
+      <p class="font-medium text-zinc-200">Models coming soon</p>
+      <p class="mt-1 text-sm text-zinc-500">You'll pick a model here, and each one shows what it costs in credits.</p>
+    </section>
+  <% else %>
+    <%= form_with model: @creation, url: creations_path(@kind), method: :post,
+          class: "space-y-5 rounded-2xl border border-white/5 bg-[#161920] p-6" do |form| %>
+      <div>
+        <%= form.label :model_key, "Model", class: "block text-xs font-medium uppercase tracking-wide text-zinc-500" %>
+        <%= form.select :model_key, @models.map { |model| [ "#{model.name} · #{pluralize(model.credits_per_1000_characters, "credit")} per 1,000 characters", model.key ] }, {}, class: field_classes %>
+      </div>
+
+      <div>
+        <%= form.label :prompt, "Text to read", class: "block text-xs font-medium uppercase tracking-wide text-zinc-500" %>
+        <%= form.text_area :prompt, rows: 8, maxlength: Creation::MAX_SPEECH_CHARACTERS, required: true,
+              placeholder: "Paste or type the text. Up to 10,000 characters.", class: "#{field_classes} text-sm" %>
+      </div>
+
+      <%= form.fields_for :options do |options| %>
+        <fieldset>
+          <legend class="text-xs font-medium uppercase tracking-wide text-zinc-500">Voice</legend>
+          <div class="mt-1 grid max-h-[22rem] gap-2 overflow-y-auto pr-1 md:grid-cols-2">
+            <% Ai::SpeechGenerator::VOICES.each do |name, description| %>
+              <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 p-3 has-[:checked]:border-amber-400/60 has-[:checked]:bg-amber-400/5">
+                <%= options.radio_button :voice, name, checked: @creation.voice == name, class: "size-4 shrink-0 accent-amber-400" %>
+                <span class="min-w-0 flex-1">
+                  <span class="block font-medium capitalize"><%= name %></span>
+                  <span class="block text-xs text-zinc-500"><%= description %></span>
+                </span>
+                <span id="voice_sample_<%= name %>" class="shrink-0">
+                  <%= render "voice_samples/sample", voice_name: name, sample: @samples[name] %>
+                </span>
+              </label>
+            <% end %>
+          </div>
+        </fieldset>
+
+        <div class="flex items-center gap-4" data-controller="range-output">
+          <%= options.label :speed, "Speed", class: "shrink-0 text-xs font-medium uppercase tracking-wide text-zinc-500" %>
+          <%= options.range_field :speed, value: @creation.speed, min: Creation::SPEED_RANGE.min, max: Creation::SPEED_RANGE.max, step: 0.05,
+                class: "w-56 accent-amber-400", data: { range_output_target: "input", action: "input->range-output#update" } %>
+          <output data-range-output-target="output" class="text-sm font-medium text-amber-300"><%= format("%.2f", @creation.speed.nonzero? || 1.0) %>x</output>
+        </div>
+      <% end %>
+
+      <div class="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-5">
+        <p class="text-xs text-zinc-500">You have <%= pluralize(current_user.credits_balance, "credit") %>. Credits are refunded if it fails.</p>
+        <%= form.submit "Generate", class: button_classes %>
+      </div>
+    <% end %>
+  <% end %>
+
+  <section class="space-y-3" aria-labelledby="history-heading">
+    <h2 id="history-heading" class="text-lg font-semibold">Your results</h2>
+    <% if @creations.empty? %>
+      <p class="rounded-xl border border-dashed border-white/10 p-4 text-sm text-zinc-500">Nothing yet. What you make shows here.</p>
+    <% else %>
+      <ul class="space-y-2" role="list">
+        <% @creations.each do |creation| %>
+          <li id="<%= dom_id(creation) %>" class="space-y-2 rounded-xl border border-white/10 bg-[#161920] p-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <p class="min-w-0 flex-1 text-sm text-zinc-300"><%= truncate(creation.prompt, length: 160) %></p>
+              <span class="shrink-0 text-xs text-zinc-500">
+                <%= creation.model&.name %> · <%= pluralize(creation.credits_charged, "credit") %> · <%= time_ago_in_words(creation.created_at) %> ago
+              </span>
+            </div>
+
+            <% if creation.pending? || creation.processing? %>
+              <p class="flex items-center gap-3 text-sm font-medium text-amber-300" role="status">
+                <%= render "scenes/spinner" %> Generating...
+              </p>
+            <% elsif creation.failed? %>
+              <p class="text-sm text-red-300" role="alert"><%= creation.error %> <%= "Credits refunded." if creation.credits_charged.positive? %></p>
+            <% elsif creation.file.attached? %>
+              <div class="flex flex-wrap items-center gap-3">
+                <audio controls preload="metadata" class="h-9 min-w-0 flex-1 basis-64" src="<%= rails_blob_path(creation.file, disposition: "inline") %>"></audio>
+                <span class="text-xs text-zinc-500"><%= format_timecode(creation.duration_ms.to_i) %> · <%= creation.voice.to_s.capitalize %> at <%= format("%.2f", creation.speed) %>x</span>
+                <%= link_to "Download MP3", rails_blob_path(creation.file, disposition: "attachment"), class: small_button_classes %>
+              </div>
+            <% end %>
+          </li>
+        <% end %>
+      </ul>
+    <% end %>
+  </section>
+</div>

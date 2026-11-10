@@ -11,12 +11,29 @@
   </div>
 
   <nav class="flex-1 space-y-1 px-3 py-3 text-sm" aria-label="Main">
+    <% on_projects = controller_name == "projects" %>
     <%= link_to projects_path,
-          class: "flex items-center gap-3 rounded-lg px-3 py-2 font-medium #{controller_name == 'projects' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'}",
-          aria: { current: (controller_name == "projects" ? "page" : nil) } do %>
+          class: "flex items-center gap-3 rounded-lg px-3 py-2 font-medium #{on_projects ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'}",
+          aria: { current: (on_projects ? "page" : nil) } do %>
       <span>Projects</span>
     <% end %>
 
+    <%# Single tools, separate from YouTube projects: each makes one thing (a clip, a picture, a
+        voice-over, a text) with a model the user picks, charged in credits by that model. %>
+    <p class="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Create</p>
+    <% CreationsController::TITLES.each do |kind, label| %>
+      <% current = controller_name == "creations" && params[:kind] == kind %>
+      <%= link_to creations_path(kind),
+            class: "flex items-center justify-between rounded-lg px-3 py-2 #{current ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'}",
+            aria: { current: (current ? "page" : nil) } do %>
+        <span><%= label %></span>
+        <% if CreationModels.for(kind).empty? %>
+          <span class="rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Soon</span>
+        <% end %>
+      <% end %>
+    <% end %>
+
+    <p class="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Account</p>
     <% [ "Music library", "Credits & billing", "Analytics", "Settings" ].each do |label| %>
       <span class="flex cursor-not-allowed items-center justify-between rounded-lg px-3 py-2 text-zinc-600" aria-disabled="true">
         <span><%= label %></span>
