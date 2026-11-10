@@ -170,4 +170,25 @@ class VoicesControllerTest < ActionDispatch::IntegrationTest
       track.update!(status: "ready")
       track
     end
+
+  test "the voice can't be generated or confirmed while the video renders" do
+    track = @project.create_voice_track!(kind: "voice", voice_name: "alloy", speed: 1.0,
+                                         script_digest: @project.latest_script.digest)
+    track.file.attach(io: StringIO.new("narration"), filename: "narration.mp3", content_type: "audio/mpeg")
+    track.update!(status: "ready")
+    @project.rendering!
+
+    assert_no_enqueued_jobs do
+      post project_voice_url(@project), params: { audio_track: { voice_name: "onyx" } }
+    end
+    assert_redirected_to project_voice_url(@project)
+    assert_equal "The video is rendering. Change the voice when it's done.", flash[:alert]
+    assert_equal "alloy", track.reload.voice_name
+
+    post confirm_project_voice_url(@project)
+    assert_not track.reload.confirmed?
+
+    get project_voice_url(@project)
+    assert_select "input[type=submit][value=?][disabled]", "Regenerate voice"
+  end
 end

@@ -59,7 +59,9 @@
         <% stale = @track.persisted? && @track.ready? && @track.stale_for?(@project.latest_script) %>
         <div class="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-3">
           <p class="text-xs text-zinc-500">
-            <% if !@track.persisted? %>
+            <% if @project.rendering? %>
+              The video is rendering. Change the voice when it's done.
+            <% elsif !@track.persisted? %>
               Generate the narration, listen to it, then confirm it.
             <% elsif @track.confirmed? %>
               Confirmed. Regenerating the voice clears this confirmation.
@@ -72,9 +74,10 @@
 
           <div class="flex flex-wrap items-center gap-3">
             <%= submit_tag (@track.persisted? ? "Regenerate voice" : "Generate voice"), form: "voice_form", name: nil,
-                  class: (@track.ready? ? secondary_button_classes : button_classes) %>
+                  disabled: @project.rendering?,
+                  class: "#{@track.ready? ? secondary_button_classes : button_classes} disabled:cursor-not-allowed disabled:opacity-50" %>
 
-            <% if @track.persisted? && @track.ready? && !@track.confirmed? && !stale %>
+            <% if @track.persisted? && @track.ready? && !@track.confirmed? && !stale && !@project.rendering? %>
               <%= button_to "Confirm voice", confirm_project_voice_path(@project), method: :post, class: button_classes %>
             <% end %>
 

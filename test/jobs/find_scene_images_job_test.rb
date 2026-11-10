@@ -823,6 +823,27 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert scenes.all? { |scene| scene.selected_image.present? }
   end
 
+  test "searching again keeps the user's uploads and AI images, and a selected one stays selected" do
+    run_job
+    first, second = @project.scenes.reload.first(2)
+    first.images.update_all(selected: false)
+    upload = first.images.build(provider: SceneImage::UPLOAD_PROVIDER, credit: "Your upload", license: "Provided by you", selected: true)
+    upload.file.attach(io: StringIO.new("\x89PNG".b), filename: "mine.png", content_type: "image/png")
+    upload.save!
+    ai = second.images.build(provider: SceneImage::AI_PROVIDER, credit: "AI image", license: "AI generated")
+    ai.file.attach(io: StringIO.new("\x89PNG".b), filename: "ai.png", content_type: "image/png")
+    ai.save!
+    old_result = second.images.where.not(provider: SceneImage::AI_PROVIDER).first
+
+    run_job
+
+    assert_equal upload, first.reload.selected_image
+    assert first.images.where.not(provider: SceneImage::UPLOAD_PROVIDER).exists?, "new results are kept as alternatives"
+    assert second.reload.images.exists?(ai.id)
+    assert second.selected_image.present?
+    assert_not SceneImage.exists?(old_result.id), "earlier search results are replaced"
+  end
+
   test "the planner's articles are saved on the project and on each scene" do
     planner = FakePlanner.new(articles: [ "Nikola Tesla", "Smiljan" ], beat_articles: { 1 => [ "Smiljan" ] })
 

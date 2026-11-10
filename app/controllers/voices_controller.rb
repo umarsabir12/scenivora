@@ -1,6 +1,7 @@
 class VoicesController < ApplicationController
   before_action :set_project
   before_action :require_script
+  before_action :refuse_while_rendering, only: %i[create confirm]
 
   # The Voice step: the narration voices beside the speed rail, with the generated voice
   # (Generate, Confirm, Continue) below.
@@ -53,6 +54,13 @@ class VoicesController < ApplicationController
       return if @project.voice_available?
 
       redirect_to project_scenes_path(@project), alert: "Approve the storyboard before choosing a voice."
+    end
+
+    # The render reads the voice file; replacing it mid-render breaks the video.
+    def refuse_while_rendering
+      return unless @project.rendering?
+
+      redirect_to project_voice_path(@project), alert: "The video is rendering. Change the voice when it's done."
     end
 
     def default_voice

@@ -345,23 +345,26 @@ class FindSceneImagesJob < ApplicationJob
         (pixabay_key.present? && scene.plan["subject_type"] == "real_place")
     end
 
-    # Videos first, so a found video becomes the selected candidate.
+    # Videos first, so a found video becomes the selected candidate. Only earlier search results are
+    # replaced: the user's uploads and AI images stay, and a selected one keeps its place.
     def store_candidates(scene, videos, images)
       SceneImage.transaction do
-        scene.images.destroy_all
+        scene.images.where.not(provider: [ SceneImage::UPLOAD_PROVIDER, SceneImage::AI_PROVIDER ]).destroy_all
+        select_new = !scene.images.exists?(selected: true)
+
         videos.each_with_index do |video, index|
           scene.images.create!(provider: video.provider, media_type: "video", image_url: video.video_url,
                                poster_url: video.poster_url, page_url: video.page_url, credit: video.credit,
                                license: video.license, duration_ms: video.duration_ms, description: video.description,
                                taken_on: video.taken_on, categories: video.categories,
                                clip_start_ms: SceneImage.default_clip_start(video.duration_ms, scene.duration_ms),
-                               selected: index.zero?)
+                               selected: select_new && index.zero?)
         end
         images.each_with_index do |image, index|
           scene.images.create!(provider: image.provider, image_url: image.image_url, page_url: image.page_url,
                                credit: image.credit, license: image.license, description: image.description,
                                taken_on: image.taken_on, categories: image.categories, source_article: image.source_article,
-                               selected: videos.empty? && index.zero?)
+                               selected: select_new && videos.empty? && index.zero?)
         end
       end
     end
