@@ -1,0 +1,204 @@
+<% content_for :title, "Scenivora: documentaries for faceless YouTube channels" %>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Scenivora home"><span class="brand-mark" aria-hidden="true"></span>Scenivora</a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#how">How it works</a>
+      <a href="#pictures">Pictures</a>
+      <a href="#render">Render</a>
+      <a href="#rules">Rules</a>
+    </nav>
+    <div class="nav-actions">
+      <%= link_to "Sign in", new_user_session_path, class: "nav-signin" %>
+      <%= link_to "Get started", new_user_registration_path, class: "btn btn-primary btn-sm" %>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero" aria-label="Introduction" data-controller="landing-stage">
+    <canvas class="stage" data-landing-stage-target="canvas" aria-hidden="true"></canvas>
+    <div class="hero-scrim"></div>
+    <div class="wrap">
+      <div class="hero-copy">
+        <span class="eyebrow">For faceless YouTube channels</span>
+        <h1>Type a topic.<br>Get a <em>finished</em> documentary.</h1>
+        <p class="lede">Scenivora researches the story, writes the narration, finds real archive pictures for every scene, voices it and renders a 1080p video ready to upload.</p>
+        <div class="hero-actions">
+          <%= link_to new_user_registration_path, class: "btn btn-primary" do %>Get started <span aria-hidden="true">→</span><% end %>
+          <a class="btn btn-ghost" href="#how">See how it works</a>
+        </div>
+        <div class="hero-meta"><span>Researched facts</span><span>Real photos first</span><span>Captions + music</span></div>
+      </div>
+    </div>
+    <div class="rec" aria-hidden="true"><i></i><span class="tc" data-landing-stage-target="timecode">00:00:00:00</span></div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">From brief to upload</span>
+        <h2>Six steps. You approve the ones that matter.</h2>
+        <p class="lede">The first three run on their own in about 5 to 10 minutes. A 3-minute video with 21 scenes took 8.5 minutes. Then you review, pick a voice and render.</p>
+      </div>
+      <div class="reel">
+        <% [
+          [ "Research", "AUTO", "Searches Wikipedia and trusted news and reference sites for your brief. Returns dated facts, the real articles, and the people, places and documents that can be shown.", "Up to 20 facts · 25 visual subjects" ],
+          [ "Script", "AUTO", "Written only from the research: a hook in the first 15 seconds, a turning point, and a visual subject named in every paragraph. Uncertain claims are attributed.", "150 words per minute · hook by 00:15" ],
+          [ "Storyboard", "AUTO", "One card per scene, each with a picture. Edit a line, swap a picture, upload your own or generate an AI image, then approve.", "Rewrites reuse the research" ],
+          [ "Voice", "YOU", "Pick one of #{Ai::SpeechGenerator::VOICES.size} narrators and a speed from 0.85x to 1.15x. The narration is voiced scene by scene, so every scene gets its exact time.", "Samples play in the browser" ],
+          [ "Render", "YOU", "Add background music that ducks under the voice, choose burned-in captions, and render the MP4 with slow, smooth camera motion on every still.", "1920×1080 · H.264 · −14 LUFS" ],
+          [ "Publish", "YOU", "An AI title, description, tags and category, with image and music credits added from the project. Copy them, download the video, thumbnail and captions, and upload.", "MP4 · thumbnail · .srt captions" ]
+        ].each.with_index(1) do |(name, who, text, fact), n| %>
+          <article class="step">
+            <div class="step-top"><span class="step-n"><%= format("%02d", n) %></span><span class="step-tc"><%= who %></span></div>
+            <h3><%= name %></h3>
+            <p><%= text %></p>
+            <span class="fact"><%= fact %></span>
+          </article>
+        <% end %>
+      </div>
+    </div>
+  </section>
+
+  <section id="demo" class="band">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">What's your next video about?</span>
+        <h2>One brief starts the whole run.</h2>
+        <p class="lede">This is how the storyboard page reports progress while a video is made. The run below is an example replay, not a live job.</p>
+      </div>
+      <div class="demo" data-controller="landing-demo">
+        <form class="panel" data-action="submit->landing-demo#replay">
+          <div class="panel-label"><strong>New video</strong><span class="tag">Example</span></div>
+          <div>
+            <label for="demo_topic">Brief</label>
+            <input id="demo_topic" value="The Great Molasses Flood of 1919">
+          </div>
+          <div>
+            <label for="demo_instructions">Instructions (optional)</label>
+            <textarea id="demo_instructions">Focus on the hours after the tank burst and the court case that followed.</textarea>
+          </div>
+          <div class="row2">
+            <div>
+              <label for="demo_tone">Tone</label>
+              <select id="demo_tone"><option>Documentary</option><option>Dramatic</option><option>Calm</option></select>
+            </div>
+            <div>
+              <label for="demo_length">Length</label>
+              <select id="demo_length"><option>3 minutes</option><option selected>5 minutes</option><option>8 minutes</option><option>10 minutes</option></select>
+            </div>
+          </div>
+          <div class="demo-actions">
+            <button class="btn btn-primary" type="submit">Replay the example run</button>
+            <%= link_to "Make it for real", new_user_registration_path, class: "btn btn-ghost" %>
+          </div>
+        </form>
+        <div class="panel" aria-live="polite">
+          <div class="panel-label"><strong data-landing-demo-target="title">Storyboard ready</strong><span class="tag tc" data-landing-demo-target="clock">08:31</span></div>
+          <div class="bar"><i data-landing-demo-target="bar"></i></div>
+          <ol class="log">
+            <% [
+              [ "00:04", "Researching the brief on Wikipedia" ],
+              [ "01:12", "Writing the script from 18 facts" ],
+              [ "02:05", "Laying out 34 scenes" ],
+              [ "02:40", "Building the picture library: 146 photos" ],
+              [ "05:20", "Checking pictures for scene 34 of 34" ],
+              [ "06:45", "Scout looking for 5 scenes still without a picture" ],
+              [ "07:30", "Starting AI images for 3 scenes" ],
+              [ "08:31", "Storyboard ready: 26 checked, 5 filler, 3 AI" ]
+            ].each do |time, text| %>
+              <li data-landing-demo-target="item" data-time="<%= time %>"><span class="t tc"><%= time %></span><span><%= text %></span><span class="s done">DONE</span></li>
+            <% end %>
+          </ol>
+          <p class="note">Times are illustrative. AI images start for at most 8 scenes and use credits.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="pictures">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Real pictures first</span>
+        <h2>Archive photos, checked before they reach your video.</h2>
+        <p class="lede">Each video builds its own library from the Wikipedia articles behind the story and their Wikimedia Commons categories. Pictures are scored first, and only the best few go to an AI check that looks at the subject, the era and any watermark.</p>
+      </div>
+      <div class="funnel">
+        <div class="fstage"><span class="src">Library</span><b>300</b><p>free-licence photos at most, per video</p></div>
+        <div class="fstage"><span class="src">Scene pool</span><b>12</b><p>candidates gathered for each scene</p></div>
+        <div class="fstage"><span class="src">Scored</span><b>4</b><p>best matches by words, date and source</p></div>
+        <div class="fstage"><span class="src">AI picture check</span><b>1</b><p>kept only if it shows the real subject</p></div>
+      </div>
+      <div class="fallbacks">
+        <div class="fb"><span class="badge b-check">✓ CHECKED</span><strong>A real picture fits</strong><p>Used once per video, with its licence and credit carried to the description.</p></div>
+        <div class="fb"><span class="badge b-fill">FILLER</span><strong>A mood scene</strong><p>Hand-checked footage of sea, mist, clouds or fire, never modern city shots in a story set before 1960.</p></div>
+        <div class="fb"><span class="badge b-ai">AI</span><strong>Nothing real fits</strong><p>A small search agent tries once more. If it finds nothing, an AI image is suggested, painted rather than photoreal when a real person is meant.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="render" class="band">
+    <div class="wrap split">
+      <div>
+        <div class="sec-head">
+          <span class="eyebrow">The render</span>
+          <h2>Built to be watched to the end.</h2>
+        </div>
+        <dl class="specs">
+          <div class="spec"><dt>Picture</dt><dd>1920 × 1080<small>H.264 and AAC, 30 frames per second</small></dd></div>
+          <div class="spec"><dt>Loudness</dt><dd>−14 LUFS<small>YouTube's own target, measured on the final mix</small></dd></div>
+          <div class="spec"><dt>Motion</dt><dd>7% zoom<small>Alternating in and out, sampled smoothly so stills glide</small></dd></div>
+          <div class="spec"><dt>Music</dt><dd>18% bed<small>Ducks while the narrator speaks, fades in and out</small></dd></div>
+          <div class="spec"><dt>Captions</dt><dd>1–3 words<small>Names and numbers in yellow, plus an .srt file</small></dd></div>
+          <div class="spec"><dt>Archive film</dt><dd>5% trim<small>Cuts timecodes and corner logos from old footage</small></dd></div>
+        </dl>
+      </div>
+      <div class="voices-col">
+        <span class="eyebrow"><%= Ai::SpeechGenerator::VOICES.size %> narrators</span>
+        <div class="voices">
+          <% Ai::SpeechGenerator::VOICES.each do |name, description| %>
+            <div class="voice"><b><%= name %></b><span><%= description %></span></div>
+          <% end %>
+        </div>
+        <p class="note">Music comes from Wikimedia Commons tracks chosen by the video's tone, or your own upload.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="rules">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">House rules</span>
+        <h2>Stories you can stand behind.</h2>
+      </div>
+      <div class="rules">
+        <% [
+          [ "Facts from sources, not from thin air", "The script uses only researched facts. No invented quotes, numbers or scenes." ],
+          [ "No real faces in AI images", "People appear only from behind or in silhouette, with no text, logos or made-up scoreboards." ],
+          [ "Respectful depiction", safe_join([ "For Islamic history, the faces of the Prophet ", tag.span("ﷺ", class: "honorific"), " and the Sahaba are never shown, in any medium." ]) ],
+          [ "Credits written for you", "Every Commons picture and music track is credited in the description, with AI narration and images disclosed." ]
+        ].each do |title, text| %>
+          <div class="rule">
+            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M3 9.5l3.5 3.5L15 4.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            <p><strong><%= title %></strong><%= text %></p>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="wrap">
+      <span class="eyebrow">Your next upload</span>
+      <h2>Start with one sentence.</h2>
+      <p class="lede">The Great Molasses Flood. The baby smuggled out of Greece in an orange box. The night the Panama Canal opened. Pick the story, Scenivora builds the video.</p>
+      <%= link_to new_user_registration_path, class: "btn btn-primary" do %>Get started <span aria-hidden="true">→</span><% end %>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap"><span>Scenivora · AI video for faceless YouTube creators</span><span>Pictures from Wikipedia and Wikimedia Commons under their own licences · <%= link_to "Sign in", new_user_session_path %></span></div>
+</footer>

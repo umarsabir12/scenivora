@@ -25,7 +25,7 @@ class AuthenticationTest < ActionDispatch::IntegrationTest
     sign_in @user
 
     delete destroy_user_session_url
-    get root_url
+    get projects_url
 
     assert_redirected_to new_user_session_url
   end

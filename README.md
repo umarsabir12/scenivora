@@ -121,7 +121,8 @@ the page shows "Generating..." or "Starting..." until it starts.
 
 ## Using the app
 
-1. **Sign up or sign in.** Password reset emails are not sent through a mail service in
+1. **Sign up or sign in.** Signed-out visitors to `/` see the landing page, with **Get started**
+   (sign up) and **Sign in**; signed-in users get their projects there. Password reset emails are not sent through a mail service in
    development. Open `log/development.log` and copy the reset link from the email.
 2. **Dashboard.** Type a brief in "What's your next video about?", optionally add instructions
    ("Focus on the escape"), pick a tone and length, and click **Create video**. The
@@ -405,6 +406,16 @@ image is used), image credits for every Commons image, and the music credit. The
 editable, **Copy all details** copies them as one block, and the MP4 and thumbnail download from
 the page.
 
+### Landing page
+
+`LandingController#show` is the public home page (`/` while signed out), with its own layout
+(`layouts/landing`) and stylesheet (`landing.css`, nested under `body.landing` because
+`stylesheet_link_tag :app` loads it on every page). The hero is a 3D helix of storyboard frames
+drawn with three.js (`landing_stage_controller.js`); three.js is vendored through importmap with
+`preload: false` and imported only when that controller connects, so app pages never download it.
+The narrator list is read from `Ai::SpeechGenerator::VOICES`. The page shows no prices or costs
+until pricing is decided.
+
 ### Single tools (sidebar: Create)
 
 Separate from YouTube projects: each tool makes one thing with a model the user picks, charged in
@@ -473,7 +484,7 @@ can be swapped in one place:
 
 | Method            | Path                           | What it does                              |
 | ----------------- | ------------------------------ | ----------------------------------------- |
-| GET               | `/`                            | Projects list                             |
+| GET               | `/`                            | Landing page (signed out), projects list (signed in) |
 | GET, POST         | `/projects`, `/projects/new`   | List and create projects (`generate=1` also starts the script) |
 | GET               | `/projects/:id`                | Project page: script, wizard, narration voice |
 | POST, PATCH       | `/projects/:id/script`         | Generate or rewrite; autosave             |

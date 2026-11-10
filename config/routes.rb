@@ -1,10 +1,14 @@
 Rails.application.routes.draw do
-  root "projects#index"
-
   devise_for :users, controllers: {
     sessions: "users/sessions",
     registrations: "users/registrations"
   }
+
+  # Signed-in users land on their projects; visitors see the landing page.
+  authenticated :user do
+    root "projects#index", as: :authenticated_root
+  end
+  root "landing#show"
 
   # Single tools (sidebar's Create group): /create/speech, /create/image, ...
   scope "create/:kind", constraints: { kind: Regexp.union(CreationModels::KINDS) } do

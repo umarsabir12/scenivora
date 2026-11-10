@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title><%= content_for(:title) || "Scenivora" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <meta name="description" content="Type a topic and get a researched, narrated 1080p documentary for your faceless YouTube channel.">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+
+    <link rel="icon" href="/icon.png" type="image/png">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=JetBrains+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap">
+    <%= stylesheet_link_tag "landing", "data-turbo-track": "reload" %>
+    <%= javascript_importmap_tags %>
+  </head>
+
+  <body class="landing">
+    <%= yield %>
+  </body>
+</html>
