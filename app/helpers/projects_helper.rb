@@ -18,7 +18,7 @@ module ProjectsHelper
     "from-violet-900/60 to-zinc-900"
   ].freeze
 
-  WIZARD_STEPS = %w[Storyboard Voice Music Render Publish].freeze
+  WIZARD_STEPS = %w[Storyboard Voice Render Publish].freeze
 
   def status_badge(project, id: nil)
     tag.span(project.status.humanize, id: id,
@@ -34,8 +34,7 @@ module ProjectsHelper
     case step
     when "Storyboard" then project_scenes_path(project)
     when "Voice" then project_voice_path(project) if project.voice_available?
-    when "Music" then project_music_path(project) if project.music_available?
-    when "Render" then project_render_path(project) if project.media_approved?
+    when "Render" then project_render_path(project) if project.music_available?
     when "Publish" then project_publish_path(project) if project.rendered?
     end
   end
@@ -44,7 +43,6 @@ module ProjectsHelper
     case step
     when "Storyboard" then project.storyboard_approved?
     when "Voice" then project.music_available? && project.voice_track&.confirmed? || false
-    when "Music" then project.media_approved?
     when "Render" then project.rendered?
     when "Publish" then project.rendered? && project.yt_title.present?
     else false

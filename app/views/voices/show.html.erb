@@ -1,4 +1,5 @@
 <% content_for :title, "Voice · #{@project.title} · Scenivora" %>
+<% content_for :head, turbo_refreshes_with(method: :morph, scroll: :preserve) %>
 <%= turbo_stream_from @project, :voice %>
 
 <div class="mx-auto max-w-5xl space-y-6">
@@ -6,44 +7,93 @@
     <div class="min-w-0">
       <%= link_to "← Projects", projects_path, class: "text-sm text-zinc-400 hover:text-zinc-200" %>
       <h1 class="mt-1 max-w-xl truncate text-lg font-semibold"><%= @project.title %></h1>
-      <h1 class="mt-2 text-2xl font-semibold tracking-tight">Voice</h1>
     </div>
     <%= render "projects/status_badge", project: @project %>
   </header>
 
   <%= render "projects/wizard", project: @project, current: "Voice" %>
 
-  <section class="rounded-2xl border border-white/5 bg-[#161920] p-6" aria-labelledby="generated-heading">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <h2 id="generated-heading" class="text-lg font-semibold">Generated voice</h2>
-      <% if @track.persisted? && @track.confirmed? %>
-        <span class="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-300">Confirmed</span>
-      <% end %>
+  <%# The speed rail sits on the right (above the cards on narrow screens, so it's set before Generate);
+      Narrator and Narration share the left column so their edges line up. %>
+  <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_4.5rem]" data-controller="range-output">
+    <div class="min-w-0 space-y-4">
+      <section class="flex min-w-0 flex-col gap-3 rounded-2xl border border-white/5 bg-[#161920] p-5" aria-labelledby="narration-heading">
+        <div>
+          <h3 id="narration-heading" class="font-semibold">Narrator</h3>
+          <p class="mt-1 text-xs text-zinc-500">Previews follow the speed. The narration uses it when generated.</p>
+        </div>
+
+        <%= form_with model: @track, url: project_voice_path(@project), method: :post, id: "voice_form" do |form| %>
+          <fieldset>
+            <legend class="sr-only">Voice</legend>
+            <div class="grid max-h-[28rem] gap-2 overflow-y-auto pr-1 md:grid-cols-2">
+              <% Ai::SpeechGenerator::VOICES.each do |name, description| %>
+                <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 p-3 has-[:checked]:border-amber-400/60 has-[:checked]:bg-amber-400/5">
+                  <%= form.radio_button :voice_name, name, class: "size-4 shrink-0 accent-amber-400" %>
+                  <span class="min-w-0 flex-1">
+                    <span class="block font-medium capitalize"><%= name %></span>
+                    <span class="block text-xs text-zinc-500"><%= description %></span>
+                  </span>
+                  <span id="voice_sample_<%= name %>" class="shrink-0">
+                    <%= render "voice_samples/sample", voice_name: name, sample: @samples[name] %>
+                  </span>
+                </label>
+              <% end %>
+            </div>
+          </fieldset>
+        <% end %>
+
+        <p class="text-xs text-zinc-500">Estimated voice cost: <%= voice_cost_estimate(@project.latest_script) %></p>
+      </section>
+
+      <section class="space-y-3 rounded-2xl border border-white/5 bg-[#161920] p-5" aria-labelledby="generated-heading">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h3 id="generated-heading" class="font-semibold">Narration</h3>
+          <% if @track.persisted? && @track.confirmed? %>
+            <span class="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-300">Confirmed</span>
+          <% end %>
+        </div>
+
+        <%= render "voices/panel", project: @project, track: @track, progress: nil %>
+
+        <% stale = @track.persisted? && @track.ready? && @track.stale_for?(@project.latest_script) %>
+        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-3">
+          <p class="text-xs text-zinc-500">
+            <% if !@track.persisted? %>
+              Generate the narration, listen to it, then confirm it.
+            <% elsif @track.confirmed? %>
+              Confirmed. Regenerating the voice clears this confirmation.
+            <% elsif stale %>
+              Regenerate the voice before confirming, because the narration changed.
+            <% elsif @track.ready? %>
+              Confirm this voice to lock it in.
+            <% end %>
+          </p>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <%= submit_tag (@track.persisted? ? "Regenerate voice" : "Generate voice"), form: "voice_form", name: nil,
+                  class: (@track.ready? ? secondary_button_classes : button_classes) %>
+
+            <% if @track.persisted? && @track.ready? && !@track.confirmed? && !stale %>
+              <%= button_to "Confirm voice", confirm_project_voice_path(@project), method: :post, class: button_classes %>
+            <% end %>
+
+            <% if @track.confirmed? && @project.music_available? %>
+              <%= link_to "Continue to music & render", project_render_path(@project), class: button_classes %>
+            <% end %>
+          </div>
+        </div>
+      </section>
     </div>
 
-    <%= render "voices/panel", project: @project, track: @track, progress: nil %>
-
-    <% if @track.persisted? && @track.ready? %>
-      <div class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-5">
-        <p class="text-sm text-zinc-400">
-          <% if @track.confirmed? %>
-            Confirmed. Regenerating the voice clears this confirmation.
-          <% elsif @track.stale_for?(@project.latest_script) %>
-            Regenerate the voice before confirming, because the narration changed.
-          <% else %>
-            Confirm this voice to lock it in for the next steps.
-          <% end %>
-        </p>
-
-        <% if !@track.confirmed? && !@track.stale_for?(@project.latest_script) %>
-          <%= button_to "Confirm voice", confirm_project_voice_path(@project), method: :post, class: button_classes %>
-        <% end %>
-      </div>
-    <% end %>
-  </section>
-
-  <section class="rounded-2xl border border-white/5 bg-[#161920] p-6" aria-labelledby="narration-heading">
-    <h2 id="narration-heading" class="text-lg font-semibold">Narration voice</h2>
-    <%= render "voices/picker", project: @project, track: @track, samples: @samples %>
-  </section>
+    <div class="order-first flex items-center gap-4 rounded-2xl border border-white/5 bg-[#161920] p-4 lg:sticky lg:top-24 lg:order-none lg:row-start-1 lg:col-start-2 lg:flex-col lg:gap-3 lg:self-start lg:px-2 lg:py-5">
+      <label for="audio_track_speed" class="shrink-0 text-xs font-medium uppercase tracking-wide text-zinc-500">Speed</label>
+      <output data-range-output-target="output" class="shrink-0 text-sm font-medium text-amber-300"><%= format("%.2f", @track.speed || 1.0) %>x</output>
+      <%= range_field_tag "audio_track[speed]", (@track.speed || 1.0), id: "audio_track_speed", form: "voice_form",
+            min: 0.85, max: 1.15, step: 0.05,
+            class: "w-full accent-amber-400 lg:h-60 lg:w-2 lg:[direction:rtl] lg:[writing-mode:vertical-lr]",
+            data: { range_output_target: "input", action: "input->range-output#update" } %>
+      <span class="hidden text-[10px] text-zinc-500 lg:block">0.85–1.15x</span>
+    </div>
+  </div>
 </div>

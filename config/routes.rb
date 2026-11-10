@@ -17,7 +17,6 @@ Rails.application.routes.draw do
     end
     resource :music, only: %i[show create update destroy], controller: "music" do
       post :upload
-      post :continue
     end
     resource :render, only: %i[show create], controller: "renders"
     resource :publish, only: %i[show update], controller: "publish" do

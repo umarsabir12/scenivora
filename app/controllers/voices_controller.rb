@@ -2,7 +2,8 @@ class VoicesController < ApplicationController
   before_action :set_project
   before_action :require_script
 
-  # The Voice tab: the generated voice (with Regenerate and Confirm) above the narration voice box.
+  # The Voice step: the narration voices beside the speed rail, with the generated voice
+  # (Generate, Confirm, Continue) below.
   def show
     @track = @project.voice_track || @project.build_voice_track(voice_name: default_voice, speed: 1.0)
     @samples = VoiceSample.where(voice_name: Ai::SpeechGenerator::VOICES.keys).index_by(&:voice_name)
@@ -36,7 +37,7 @@ class VoicesController < ApplicationController
       track.update!(confirmed_at: Time.current)
       @project.time_scenes_from_voice!
       @project.voice_ready! unless @project.music_available?
-      redirect_to project_music_path(@project), notice: "Voice confirmed. Next: music."
+      redirect_to project_render_path(@project), notice: "Voice confirmed. Next: music and render."
     else
       track.update!(confirmed_at: Time.current)
       redirect_to project_scenes_path(@project), notice: "Voice confirmed. Next: scenes."

@@ -1,5 +1,5 @@
 <%# Replaced live over Turbo Streams while the job runs. Contains no forms: a CSRF token rendered here would not match the viewer's session. %>
-<div id="voice_panel" class="space-y-4">
+<div id="voice_panel" class="space-y-3">
   <% if track.processing? || track.pending? %>
     <div class="flex items-center gap-3 rounded-xl border border-dashed border-amber-400/40 bg-amber-400/5 p-4" role="status">
       <svg class="size-5 shrink-0 animate-spin text-amber-300" fill="none" viewBox="0 0 24 24" aria-hidden="true">
@@ -16,10 +16,9 @@
   <% end %>
 
   <% if track.persisted? && track.file.attached? %>
-    <div class="space-y-2">
-      <p class="text-xs uppercase tracking-wide text-zinc-500">Narration</p>
-      <audio controls preload="metadata" class="w-full" src="<%= rails_blob_path(track.file, disposition: "inline") %>"></audio>
-      <p class="text-sm text-zinc-400">
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <audio controls preload="metadata" class="h-9 min-w-0 flex-1 basis-64" src="<%= rails_blob_path(track.file, disposition: "inline") %>"></audio>
+      <p class="shrink-0 text-sm text-zinc-400">
         <%= duration_label(track.duration_ms.to_i) %> · <%= track.voice_name.capitalize %> at <%= format("%.2f", track.speed) %>x
       </p>
     </div>

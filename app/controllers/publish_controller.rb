@@ -1,4 +1,5 @@
-# The Publish step: download the video and thumbnail, and write the YouTube details.
+# The Publish step: download the video and thumbnail, and write the YouTube details. The same panel
+# sits on the Render page, so saving or writing details returns to whichever page sent the form.
 class PublishController < ApplicationController
   before_action :set_project
   before_action :require_rendered
@@ -11,20 +12,20 @@ class PublishController < ApplicationController
     details[:yt_tags] = details[:yt_tags].to_s.split(",").map(&:squish).reject(&:empty?)
 
     if @project.update(details)
-      redirect_to project_publish_path(@project), notice: "Details saved."
+      redirect_back_or_to project_publish_path(@project), notice: "Details saved."
     else
-      redirect_to project_publish_path(@project), alert: @project.errors.full_messages.to_sentence
+      redirect_back_or_to project_publish_path(@project), alert: @project.errors.full_messages.to_sentence
     end
   end
 
   def generate
     if @project.settings["metadata_generating"]
-      return redirect_to(project_publish_path(@project), notice: "The details are already being written.")
+      return redirect_back_or_to(project_publish_path(@project), notice: "The details are already being written.")
     end
 
     @project.update!(settings: @project.settings.except("metadata_error").merge("metadata_generating" => true))
     GenerateMetadataJob.perform_later(@project)
-    redirect_to project_publish_path(@project), notice: "Writing the YouTube details..."
+    redirect_back_or_to project_publish_path(@project), notice: "Writing the YouTube details..."
   end
 
   # SRT captions to upload to YouTube as a caption track.
@@ -39,7 +40,9 @@ class PublishController < ApplicationController
       @project = current_user.projects.find(params[:project_id])
     end
 
+    # The current video stays publishable while a re-render runs.
     def require_rendered
-      redirect_to project_render_path(@project), alert: "Render the video first." unless @project.rendered? && @project.video.attached?
+      ready = (@project.rendered? || @project.rendering?) && @project.video.attached?
+      redirect_to project_render_path(@project), alert: "Render the video first." unless ready
     end
 end

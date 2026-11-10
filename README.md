@@ -11,7 +11,7 @@ music and a rendered MP4. The creator uploads the video to YouTube themselves.
 | 1    | Auth, layout, projects, script         | Done         |
 | 2    | Voice generation                       | Done         |
 | 3    | Scenes and images                      | Done (planner, Commons, review, upload, AI images) |
-| 4    | Background music                       | Done (Commons library or upload, volume) |
+| 4    | Background music                       | Done (suggested Commons tracks or upload, volume) |
 | 5    | Render MP4                             | Done (1080p, local ffmpeg)  |
 | 6    | Title, description, tags, publish      | Done (AI details, credits footer, downloads) |
 
@@ -134,18 +134,26 @@ the page shows "Generating..." or "Starting..." until it starts.
    its picture. **Rewrite storyboard** writes a new script and storyboard for the same brief (the
    research is reused). When every scene has a picture, **Approve storyboard & choose voice**.
    Scene times are estimated from the words until the voice is made.
-4. **Voice.** Pick a voice, play its sample, set the speed from 0.85x to 1.15x, check the
-   estimated cost, and click **Generate voice**. The narration is voiced one scene at a time, with
-   live progress ("Generating part 2 of 30..."). **Confirm voice** times every scene from its own
-   part and opens Music. Editing the storyboard afterwards sends the project back to the
-   storyboard, and the voice must be made again.
-5. **Music.** Pick a free track from the music library (Wikimedia Commons), or upload your own,
-   and set its volume (default 18%, up to 50%). Music is optional: **Continue without music**
-   skips it.
-6. **Render.** Choose whether to burn captions in (on by default), then click **Render video**. The
+4. **Voice.** The speed slider (0.85x to 1.15x) sits fixed on the right of the voice list and the
+   narration card (above them on phones). Pick a voice, play its sample, and click
+   **Generate voice**. The narration is voiced one scene at a
+   time, with live progress ("Generating part 2 of 30..."). **Confirm voice** times every scene
+   from its own part and opens Render. Editing the storyboard afterwards sends the project back to
+   the storyboard, and the voice must be made again.
+5. **Render.** The page stacks three cards: music, render, publish. Optionally pick background
+   music in the top card: a suggested free track (Wikimedia Commons, chosen by the video's tone) or
+   your own upload, with its volume (default 18%, up to 50%;
+   the slider saves as you let go). Choose whether to burn captions in (on by default), then click **Render video**. The
    MP4 (1920x1080, H.264, AAC, −14 LUFS) is built on this machine with ffmpeg, with progress shown
-   live. A failed re-render keeps the previous video.
-7. **Publish.** Watch the video, download the MP4 and thumbnail, and click **Write details** for an
+   live under the button; the music card stays visible but can't be changed meanwhile. Once the
+   video is rendered the music card is hidden; **Change** in the Music box brings it back
+   (`?music=1`) for a re-render, and **Done** hides it again. While a re-render runs, the Publish
+   card keeps showing the current video and its details stay editable. A failed
+   re-render keeps the previous video. The Publish card below is the same panel as the Publish step
+   (`publish/_panel`): the video with its downloads on the left, the YouTube details on the right
+   (pushing to YouTube is marked "coming soon"). Saving or writing details returns to the page the
+   form came from.
+6. **Publish.** Watch the video, download the MP4 and thumbnail, and click **Write details** for an
    AI title, description, tags and category. Edit them, **Save details**, then **Copy all details**
    and upload to YouTube yourself. **Download captions (.srt)** gives a caption file to upload in
    YouTube Studio under Subtitles.
@@ -209,7 +217,7 @@ refreshing the storyboard page:
   credits last; a note says how many are left.
 
 Storyboard projects run storyboard (`script_ready`) → approved (`scenes_ready`) → voice confirmed
-(`voice_ready`) → `media_ready` → `rendering` → `rendered`. Editing or deleting a scene
+(`voice_ready`) → `rendering` → `rendered` (a first render that fails leaves `media_ready`). Editing or deleting a scene
 (`StoryboardScenesController`) rewrites the script from the scenes, estimates the times again,
 unconfirms the voice and returns the project to the storyboard. The voice is generated one
 paragraph (scene) at a time, so confirming it gives each scene its measured time. Projects made
@@ -322,7 +330,7 @@ all of them. Pictures you pick, upload or generate are marked as your choice and
 narration, with **Swap image**, **Upload** and **Remove**. **Swap image** opens the side panel for that
 scene, showing its candidates (click one to select it) and a free Commons search box. Uploads accept
 JPEG, PNG or WebP up to 10 MB. **Approve scenes & continue** is enabled once every scene has an image;
-it sets the project to `scenes_ready` and opens the Music step. A scene waiting for an AI image shows
+it sets the project to `scenes_ready` and opens the Render step. A scene waiting for an AI image shows
 filler footage until the AI image is made, so it doesn't hold approval up.
 
 **AI images.** The swap panel's **AI generate** tab lets you describe an image and generate it for
@@ -346,14 +354,17 @@ The planner runs only when the script or the narration length changes. Repeated 
 stored plans, so they don't pay again. Each planner call is recorded in `ApiUsage` as `scene_plan`.
 Tests use fakes and clear `OPENAI_API_KEY`, so they never make a paid call.
 
-### Music (step 4)
+### Music (Render step)
 
-The Music page searches Wikimedia Commons for audio (`Media::CommonsAudioSearch`, no key), keeping
-Public domain, CC0, CC BY and CC BY-SA tracks between 1 and 15 minutes and under 40 MB. The default
-search follows the project's tone. **Use this track** stores the choice and `PrepareMusicTrackJob`
+The music card at the top of the Render page (`music/_library`; `/music` redirects there) is kept
+compact (one row for the chosen track and its volume, a short scrollable list below) and lists
+suggested Wikimedia Commons tracks (`Media::CommonsAudioSearch`, no key) for the project's tone;
+there is no search box. It keeps public domain, CC0, CC BY and CC BY-SA tracks between 1 and 15
+minutes and under 40 MB. **Use** stores the choice and `PrepareMusicTrackJob`
 downloads it from `upload.wikimedia.org` (the only host accepted) and measures it with ffprobe.
-Uploads accept MP3, M4A, WAV, OGG or FLAC up to 40 MB. **Continue** sets the project to
-`media_ready`; a track that is still being prepared must finish first. Music search is cached for
+Uploads accept MP3, M4A, WAV, OGG or FLAC up to 40 MB. Music opens once the voice is
+confirmed. **Render video** waits for a track that is still being prepared, and refuses a track
+that failed. Changing the volume slider saves it at once. The suggestions are cached for
 an hour.
 
 ### Render (step 5)
@@ -458,8 +469,8 @@ can be swapped in one place:
 | POST              | `/projects/:id/voice/confirm`  | Confirm the generated voice               |
 | POST              | `/projects/:id/scenes/approve` | Approve scenes (every scene needs an image) |
 | POST              | `/scenes/:id/images`, `/scenes/:id/search`, `/scenes/:id/ai_image` | Upload, search Commons, generate an AI image |
-| GET, POST, PATCH, DELETE | `/projects/:id/music`   | Music library; choose, volume, remove     |
-| POST              | `/projects/:id/music/upload`, `/continue` | Upload a track; continue to render |
+| GET, POST, PATCH, DELETE | `/projects/:id/music`   | Redirect to render; choose, volume, remove |
+| POST              | `/projects/:id/music/upload` | Upload a track                       |
 | GET, POST         | `/projects/:id/render`         | Render page; start a render               |
 | GET, PATCH        | `/projects/:id/publish`        | Publish page; save YouTube details        |
 | POST              | `/projects/:id/publish/generate` | Write YouTube details with AI           |

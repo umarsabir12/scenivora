@@ -282,13 +282,11 @@ class ScenesControllerTest < ActionDispatch::IntegrationTest
 
     post approve_project_scenes_url(@project)
 
-    assert_redirected_to project_music_url(@project)
+    assert_redirected_to project_render_url(@project)
     assert @project.reload.scenes_ready?
 
     follow_redirect!
-    assert_select "li[aria-current='step']", text: /Music/
-    get project_voice_url(@project)
-    assert_response :success
+    assert_select "li[aria-current='step']", text: /Render/
   end
 
   test "the AI generate tab shows the cost and balance, and is disabled without enough credits" do

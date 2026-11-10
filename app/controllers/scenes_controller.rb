@@ -48,7 +48,7 @@ class ScenesController < ApplicationController
       redirect_to project_voice_path(@project), notice: "Storyboard approved. Next: the voice."
     else
       @project.scenes_ready!
-      redirect_to project_music_path(@project), notice: "Scenes approved. Next: music."
+      redirect_to project_render_path(@project), notice: "Scenes approved. Next: music and render."
     end
   end
 

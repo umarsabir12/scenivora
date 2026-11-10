@@ -44,5 +44,15 @@ end
 module ActionDispatch
   class IntegrationTest
     include Devise::Test::IntegrationHelpers
+
+    # The Render page searches Commons for music; keep every page test off the network.
+    setup do
+      @original_audio_search_new = Media::CommonsAudioSearch.method(:new)
+      Media::CommonsAudioSearch.define_singleton_method(:new) { |*| ProductionSteps::NoMusicSearch.new }
+    end
+
+    teardown do
+      Media::CommonsAudioSearch.define_singleton_method(:new, @original_audio_search_new)
+    end
   end
 end

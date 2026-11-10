@@ -71,7 +71,7 @@ class Project < ApplicationRecord
     storyboard? ? STORYBOARD_APPROVED_STATUSES.include?(status) : scenes_approved?
   end
 
-  # The music step opens once the storyboard's voice is confirmed (older projects: once scenes are approved).
+  # Music and render open once the storyboard's voice is confirmed (older projects: once scenes are approved).
   def music_available?
     storyboard? ? VOICE_CONFIRMED_STATUSES.include?(status) : scenes_approved?
   end

@@ -1,5 +1,8 @@
 <% content_for :title, "Render · #{@project.title} · Scenivora" %>
+<% content_for :head, turbo_refreshes_with(method: :morph, scroll: :preserve) %>
 <%= turbo_stream_from @project, :render %>
+<%= turbo_stream_from @project, :music %>
+<%= turbo_stream_from @project, :publish %>
 
 <div class="mx-auto max-w-5xl space-y-6">
   <header class="flex flex-wrap items-start justify-between gap-4">
@@ -12,7 +15,13 @@
 
   <%= render "projects/wizard", project: @project, current: "Render" %>
 
-  <section class="space-y-5 rounded-2xl border border-white/5 bg-[#161920] p-6" aria-labelledby="render-heading">
+  <% if @show_music %>
+    <%= render "music/library", project: @project, music_track: @project.music_track, locked: @project.rendering?,
+          results: @music_results, search_error: @music_search_error,
+          close_path: (project_render_path(@project) if @project.rendered? && @project.video.attached?) %>
+  <% end %>
+
+  <section class="min-w-0 space-y-5 rounded-2xl border border-white/5 bg-[#161920] p-6" aria-labelledby="render-heading">
     <div>
       <h2 id="render-heading" class="text-lg font-semibold">Render video</h2>
       <p class="mt-1 text-sm text-zinc-400">1080p MP4, rendered on this machine with ffmpeg. Rendering costs no credits.</p>
@@ -29,7 +38,12 @@
         <dd class="mt-1 text-zinc-200"><%= pluralize(@project.scenes.size, "scene") %></dd>
       </div>
       <div class="rounded-xl border border-white/5 bg-white/[0.03] p-4">
-        <dt class="text-xs uppercase tracking-wide text-zinc-500">Music</dt>
+        <dt class="flex items-center justify-between text-xs uppercase tracking-wide text-zinc-500">
+          Music
+          <% unless @show_music %>
+            <%= link_to "Change", project_render_path(@project, music: 1), class: "normal-case tracking-normal text-amber-300 hover:underline" %>
+          <% end %>
+        </dt>
         <dd class="mt-1 truncate text-zinc-200"><%= @music ? "#{@music.title} · #{@music.volume}%" : "None" %></dd>
       </div>
     </dl>
@@ -42,16 +56,6 @@
       <% end %>
       <% if @project.render_error.present? %>
         <p class="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300" role="alert"><%= @project.render_error %></p>
-      <% end %>
-
-      <% if @project.rendered? && @project.video.attached? %>
-        <video controls preload="metadata" class="aspect-video w-full rounded-xl bg-black"
-               src="<%= rails_blob_path(@project.video, disposition: "inline") %>"
-               <% if @project.thumbnail.attached? %>poster="<%= rails_blob_path(@project.thumbnail, disposition: "inline") %>"<% end %>></video>
-
-        <div class="flex flex-wrap items-center gap-3">
-          <%= link_to "Continue to publish", project_publish_path(@project), class: button_classes %>
-        </div>
       <% end %>
 
       <%= form_with url: project_render_path(@project), method: :post, class: "space-y-3 border-t border-white/5 pt-5",
@@ -72,6 +76,25 @@
         <%= form.submit (@project.video.attached? ? "Re-render" : "Render video"),
               class: (@project.video.attached? ? secondary_button_classes : button_classes) %>
       <% end %>
+    <% end %>
+  </section>
+
+  <section class="space-y-4" aria-labelledby="publish-heading">
+    <h2 id="publish-heading" class="text-lg font-semibold">Your video is ready</h2>
+
+    <%# During a re-render the current video stays here until the new one replaces it. %>
+    <% if (@project.rendered? || @project.rendering?) && @project.video.attached? %>
+      <% if @project.rendering? %>
+        <p class="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-sm text-amber-200" role="status">
+          Re-rendering. This is the current video; the new one replaces it when it's ready.
+        </p>
+      <% end %>
+      <%= render "publish/panel", rerender_link: false %>
+    <% else %>
+      <div class="space-y-3 rounded-2xl border border-white/5 bg-[#161920] p-6">
+        <p class="text-sm text-zinc-400">Render the video first. It shows here with its YouTube details.</p>
+        <p class="rounded-xl border border-white/5 p-3 text-center text-xs text-zinc-500">Push to YouTube: feature coming soon</p>
+      </div>
     <% end %>
   </section>
 </div>

@@ -25,15 +25,32 @@ class MusicControllerTest < ActionDispatch::IntegrationTest
   end
 
   def show_with(search)
-    with_stubbed_new(Media::CommonsAudioSearch, search) { get project_music_url(@project) }
+    with_stubbed_new(Media::CommonsAudioSearch, search) { get project_render_url(@project) }
   end
 
-  test "the music step needs approved scenes" do
+  test "music needs approved scenes" do
     @project.update!(status: "voice_ready")
 
     get project_music_url(@project)
 
-    assert_redirected_to project_scenes_url(@project)
+    assert_redirected_to project_voice_url(@project)
+  end
+
+  test "a storyboard's music needs the voice confirmed" do
+    @project.update!(settings: { "storyboard" => true }, status: "scenes_ready")
+
+    assert_no_enqueued_jobs do
+      post project_music_url(@project), params: { audio_url: RESULT.audio_url, title: "Home Song" }
+    end
+
+    assert_redirected_to project_voice_url(@project)
+    assert_equal "Confirm the voice first.", flash[:alert]
+  end
+
+  test "the music page redirects to the render step" do
+    get project_music_url(@project)
+
+    assert_redirected_to project_render_url(@project)
   end
 
   test "lists free tracks with a preview and a button to use each one" do
@@ -43,14 +60,13 @@ class MusicControllerTest < ActionDispatch::IntegrationTest
     assert_select "li", text: /Home Song/
     assert_select "audio[src=?]", "https://upload.wikimedia.org/home.wav"
     assert_select "form[action=?] input[name=audio_url][value=?]", project_music_path(@project), "https://upload.wikimedia.org/home.wav"
-    assert_select "form[action=?] button", continue_project_music_path(@project), text: "Continue without music"
   end
 
   test "a failed music search shows a message and the page still works" do
     show_with(FakeAudioSearch.new(error: Media::Error.new("offline")))
 
     assert_response :success
-    assert_select "[role=alert]", text: "Music search failed. Try again later."
+    assert_select "[role=alert]", text: "Suggested tracks couldn't load. Upload your own, or try again later."
   end
 
   test "choosing a Commons track creates it and queues the download" do
@@ -102,22 +118,6 @@ class MusicControllerTest < ActionDispatch::IntegrationTest
     assert_equal 30, track.reload.volume
   end
 
-  test "continuing without music moves the project to render" do
-    post continue_project_music_url(@project)
-
-    assert_redirected_to project_render_url(@project)
-    assert @project.reload.media_ready?
-  end
-
-  test "continuing waits while a track is still being prepared" do
-    @project.create_music_track!(title: "Loading", source_url: "https://upload.wikimedia.org/a.ogg")
-
-    post continue_project_music_url(@project)
-
-    assert_redirected_to project_music_url(@project)
-    assert @project.reload.scenes_ready?
-  end
-
   test "removing music deletes the track" do
     ready_music_track(@project)
 
@@ -132,5 +132,13 @@ class MusicControllerTest < ActionDispatch::IntegrationTest
     get project_music_url(other)
 
     assert_response :not_found
+  end
+
+  test "after a render, changing the music keeps the music card open" do
+    attach_rendered_video(@project)
+
+    delete project_music_url(@project)
+
+    assert_redirected_to project_render_url(@project, music: 1)
   end
 end

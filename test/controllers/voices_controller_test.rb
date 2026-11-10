@@ -29,7 +29,7 @@ class VoicesControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  test "confirming a storyboard's voice times each scene from its part and opens music" do
+  test "confirming a storyboard's voice times each scene from its part and opens music and render" do
     @project.update!(settings: { "storyboard" => true }, status: :scenes_ready)
     @project.latest_script.update!(body: "HMS Calypso reached Corfu.\n\nThe family sailed for Brindisi.")
     @project.scenes.create!(position: 1, text: "HMS Calypso reached Corfu.", start_ms: 0, duration_ms: 2_000)
@@ -43,7 +43,7 @@ class VoicesControllerTest < ActionDispatch::IntegrationTest
 
     post confirm_project_voice_url(@project)
 
-    assert_redirected_to project_music_url(@project)
+    assert_redirected_to project_render_url(@project)
     assert @project.reload.voice_ready?
     assert_equal [ [ 0, 2_300 ], [ 2_300, 2_800 ] ], @project.scenes.map { |scene| [ scene.start_ms, scene.duration_ms ] }
   end

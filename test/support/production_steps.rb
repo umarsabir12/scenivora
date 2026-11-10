@@ -1,5 +1,10 @@
 # Builds a project that has reached the scenes-approved stage, for tests of the later steps.
 module ProductionSteps
+  # Stands in for Media::CommonsAudioSearch so page tests make no network call.
+  class NoMusicSearch
+    def search(_query, limit: 8) = []
+  end
+
   def project_with_approved_scenes(user = users(:one), status: "scenes_ready")
     project = user.projects.create!(prompt: "How tides work", tone: "documentary", target_length_minutes: 3,
                                     settings: { "ai_voice" => true })
