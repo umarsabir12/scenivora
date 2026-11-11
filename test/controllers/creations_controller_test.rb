@@ -118,6 +118,7 @@ class CreationsControllerTest < ActionDispatch::IntegrationTest
 
     assert_select "img[alt=?]", "A lighthouse"
     assert_select "a", text: "Download PNG"
-    assert_match "Painted illustration · Portrait", response.body
+    assert_select "li", text: "Painted illustration"
+    assert_select "li", text: "Portrait · 1024x1536"
   end
 end

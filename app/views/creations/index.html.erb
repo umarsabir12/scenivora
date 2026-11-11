@@ -38,6 +38,9 @@
       <ul class="space-y-2" role="list">
         <% @creations.each do |creation| %>
           <li id="<%= dom_id(creation) %>" class="space-y-2 rounded-xl border border-white/10 bg-[#161920] p-4">
+          <% if creation.kind == "image" %>
+            <%= render "creations/image_card", creation: creation %>
+          <% else %>
             <div class="flex flex-wrap items-start justify-between gap-3">
               <p class="min-w-0 flex-1 text-sm text-zinc-300"><%= truncate(creation.prompt, length: 160) %></p>
               <span class="shrink-0 text-xs text-zinc-500">
@@ -54,6 +57,7 @@
             <% elsif creation.file.attached? %>
               <%= render "creations/#{creation.kind}_result", creation: creation %>
             <% end %>
+          <% end %>
           </li>
         <% end %>
       </ul>
