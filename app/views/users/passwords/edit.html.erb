@@ -1,32 +1,23 @@
 <% content_for :title, "Choose a new password · Scenivora" %>
 
-<h1 class="text-2xl font-bold tracking-tight">Choose a new password</h1>
+<h1 class="text-3xl font-bold tracking-tight">Choose a new password</h1>
+<p class="mt-2 text-sm text-zinc-400">You'll be signed in once it's saved.</p>
 
-<%= form_for(resource, as: resource_name, url: password_path(resource_name), method: :put, class: "mt-6 space-y-5") do |form| %>
-  <% if resource.errors.any? %>
-    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300">
-      <ul class="list-disc pl-5">
-        <% resource.errors.full_messages.each do |message| %>
-          <li><%= message %></li>
-        <% end %>
-      </ul>
-    </div>
-  <% end %>
-
+<%= form_for(resource, as: resource_name, url: password_path(resource_name), method: :put, html: { class: "mt-8 space-y-5" }) do |form| %>
+  <%= render "users/shared/error_messages", resource: resource %>
   <%= form.hidden_field :reset_password_token %>
 
   <div>
-    <%= form.label :password, "New password", class: "block text-sm font-medium text-gray-700 dark:text-gray-300" %>
-    <%= form.password_field :password, required: true, autocomplete: "new-password",
-          placeholder: "At least #{Devise.password_length.min} characters", minlength: Devise.password_length.min,
-          maxlength: Devise.password_length.max, class: field_classes %>
+    <%= render "users/shared/password_field", form: form, field: :password, label: "New password",
+          options: { required: true, autofocus: true, autocomplete: "new-password", placeholder: "At least #{Devise.password_length.min} characters",
+                     minlength: Devise.password_length.min, maxlength: Devise.password_length.max } %>
   </div>
 
   <div>
-    <%= form.label :password_confirmation, "Confirm new password", class: "block text-sm font-medium text-gray-700 dark:text-gray-300" %>
-    <%= form.password_field :password_confirmation, required: true, autocomplete: "new-password",
-          placeholder: "Repeat new password", maxlength: Devise.password_length.max, class: field_classes %>
+    <%= render "users/shared/password_field", form: form, field: :password_confirmation, label: "Confirm new password",
+          options: { required: true, autocomplete: "new-password", placeholder: "Repeat new password",
+                     maxlength: Devise.password_length.max } %>
   </div>
 
-  <%= form.submit "Save new password", class: "#{button_classes} w-full" %>
+  <%= form.submit "Save new password", class: "#{button_classes} w-full py-2.5" %>
 <% end %>

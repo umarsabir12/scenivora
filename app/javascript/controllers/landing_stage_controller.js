@@ -14,6 +14,7 @@ export default class extends Controller {
   static targets = ["canvas", "timecode"]
 
   async connect() {
+    if (!this.canvasTarget.getClientRects().length) return // Hidden (the sign-in panel on phones): skip three.js.
     this.reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
     this.random = seededRandom(7)
     this.startedAt = performance.now()

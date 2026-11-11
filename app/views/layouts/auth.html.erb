@@ -9,21 +9,51 @@
     <link rel="icon" href="/icon.png" type="image/png">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
 
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800&family=JetBrains+Mono:wght@500&display=swap">
     <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>
   </head>
 
-  <body class="min-h-full bg-[#0c0e12] text-zinc-100 antialiased">
-    <div class="flex min-h-screen flex-col items-center justify-center px-4 py-12">
-      <div class="mb-8 text-center">
-        <span class="text-2xl font-bold tracking-tight text-indigo-600 dark:text-indigo-400">Scenivora</span>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">AI video creation for faceless YouTube creators</p>
-      </div>
+  <body class="min-h-full bg-[#0f1016] text-zinc-100 antialiased">
+    <div class="grid min-h-screen lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      <%# Brand panel: the landing page's 3D storyboard, wide screens only. %>
+      <aside class="relative hidden overflow-hidden border-r border-white/5 bg-[radial-gradient(70%_60%_at_50%_40%,rgba(240,164,58,.16),transparent_70%)] lg:flex lg:flex-col lg:justify-between lg:p-12"
+             data-controller="landing-stage">
+        <canvas class="absolute inset-0 size-full" data-landing-stage-target="canvas" aria-hidden="true"></canvas>
+        <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(15,16,22,.7)_0%,rgba(15,16,22,0)_35%,rgba(15,16,22,0)_55%,rgba(15,16,22,.95)_100%)]"></div>
 
-      <div class="w-full max-w-md rounded-2xl bg-[#161920] p-8 ring-1 ring-white/5">
-        <%= render "layouts/flash" %>
-        <%= yield %>
-      </div>
+        <%= link_to root_path, class: "relative flex items-center gap-2.5 self-start font-['Big_Shoulders_Display',sans-serif] text-2xl font-extrabold uppercase tracking-[.06em]" do %>
+          <span class="relative size-[22px] rounded-full border-2 border-[#f0a43a] after:absolute after:left-[6px] after:top-[3px] after:border-y-[5px] after:border-l-[8px] after:border-y-transparent after:border-l-[#f0a43a]" aria-hidden="true"></span>
+          Scenivora
+        <% end %>
+
+        <div class="relative max-w-md space-y-5">
+          <h2 class="font-['Big_Shoulders_Display',sans-serif] text-6xl font-extrabold uppercase leading-[.92] text-balance">
+            Type a topic. Get a <span class="text-[#f0a43a]">finished</span> documentary.
+          </h2>
+          <ul class="space-y-2 font-['JetBrains_Mono',monospace] text-xs text-zinc-400">
+            <li><span class="text-[#7cc7b5]">●</span> Research and script from real sources</li>
+            <li><span class="text-[#7cc7b5]">●</span> Archive photos, checked scene by scene</li>
+            <li><span class="text-[#7cc7b5]">●</span> Voice, music, captions and a 1080p render</li>
+          </ul>
+        </div>
+      </aside>
+
+      <main class="flex flex-col px-4 py-8 sm:px-8">
+        <div class="flex items-center justify-between">
+          <%= link_to "Scenivora", root_path, class: "font-['Big_Shoulders_Display',sans-serif] text-2xl font-extrabold uppercase tracking-[.06em] lg:invisible" %>
+          <%= link_to "← Home", root_path, class: "text-sm text-zinc-400 hover:text-zinc-100" %>
+        </div>
+
+        <div class="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-12">
+          <%= render "layouts/flash" %>
+          <%= yield %>
+        </div>
+
+        <p class="text-center text-xs text-zinc-500">AI video for faceless YouTube creators</p>
+      </main>
     </div>
   </body>
 </html>

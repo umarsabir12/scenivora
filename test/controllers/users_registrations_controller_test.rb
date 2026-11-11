@@ -27,6 +27,7 @@ class UsersRegistrationsControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :unprocessable_entity
+    assert_select "[role='alert'] li", minimum: 2
   end
 
   test "signed-in dashboard shows the credit balance placeholder" do
