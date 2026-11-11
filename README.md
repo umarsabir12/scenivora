@@ -145,7 +145,7 @@ the page shows "Generating..." or "Starting..." until it starts.
    music in the top card: a suggested free track (Wikimedia Commons, chosen by the video's tone) or
    your own upload, with its volume (default 18%, up to 50%;
    the slider saves as you let go). Choose whether to burn captions in (on by default), then click **Render video**. The
-   MP4 (1920x1080, H.264, AAC, −14 LUFS) is built on this machine with ffmpeg, with progress shown
+   MP4 (1920x1080, H.264, AAC, −16 LUFS) is built on this machine with ffmpeg, with progress shown
    live under the button; the music card stays visible but can't be changed meanwhile. Once the
    video is rendered the music card is hidden; **Change** in the Music box brings it back
    (`?music=1`) for a re-render, and **Done** hides it again. While a re-render runs, the Publish
@@ -386,8 +386,11 @@ an hour.
    numbers and names in yellow, over a dark band, with the YouTube title (if written) as a hook
    over the first 2.8 seconds. This needs ffmpeg with libass; without it, the render finishes
    without captions and the page explains why.
-4. **Sound.** The narration is added; music, if any, loops underneath at its volume, ducks while
-   the voice speaks, and fades in and out. The final mix is normalised to −14 LUFS.
+4. **Sound.** The narration is cleaned first (`Media::Ffmpeg::VOICE_CHAIN`: 48 kHz, a 70 Hz
+   high-pass, a gentle compressor and a limiter for its few sharp peaks). Music, if any, loops
+   underneath at its volume, ducks while the voice speaks, and fades in and out. The final mix is
+   normalised to −16 LUFS; YouTube turns louder audio down anyway. Text to speech downloads get the
+   same voice chain (`master_voice`).
 5. A light vignette is added, and a 1280x720 thumbnail is taken from the first second.
 
 Remote images are downloaded at render time (`Media::Download`: HTTPS only, follows redirects,
@@ -424,12 +427,17 @@ credits by that model. The tabs are **Create video**, **Create image**, **Text t
 20 results with playback and download.
 
 - Models live in `config/creation_models.yml` (key, name, provider, model, price, credits). A tool
-  with no models shows "Models coming soon" and a **Soon** badge in the sidebar. Only **Text to
-  speech** has one so far: OpenAI `tts-1`, 1 credit per started 1,000 characters (placeholder).
+  with no models shows "Models coming soon" and a **Soon** badge in the sidebar. So far:
+  - **Text to speech:** OpenAI `tts-1`, 1 credit per started 1,000 characters (placeholder).
+  - **Create image:** OpenAI `gpt-image-1-mini` (medium quality), 5 credits per image
+    (placeholder). Style photo or painted illustration, size landscape, portrait or square, a
+    description up to 1,000 characters. `Ai::ImageGenerator`'s safety rules apply: no real faces,
+    text or logos.
 - A `Creation` row holds the tool, model, prompt, options (voice, speed), status and the file.
   `Creation.start!` charges the credits and queues `GenerateCreationJob`, which refunds them if it
   fails. Speech: up to 10,000 characters, voiced in parts with `NarrationParts`, joined with
-  ffmpeg into one MP3. The real cost goes to `ApiUsage` against the creation (`create_speech`).
+  ffmpeg into one MP3. Image: one `Ai::ImageGenerator` call, saved as a PNG. The real cost goes to
+  `ApiUsage` against the creation (`create_speech`, `create_image`).
 
 ### Captions (SRT)
 

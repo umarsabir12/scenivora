@@ -1,0 +1,36 @@
+<%# Create image: the description, a style and a size. The generator adds its safety rules (no real
+    faces, text or logos), so the page says so. %>
+<div>
+  <%= form.label :prompt, "Describe the image", class: "block text-xs font-medium uppercase tracking-wide text-zinc-500" %>
+  <%= form.text_area :prompt, rows: 4, maxlength: Creation::MAX_IMAGE_PROMPT, required: true,
+        placeholder: "e.g. A lighthouse on a rocky coast at dawn, waves breaking below.", class: "#{field_classes} text-sm" %>
+  <p class="mt-1 text-xs text-zinc-500">People are shown from behind or in silhouette, never as a real person's face. No text or logos.</p>
+</div>
+
+<%= form.fields_for :options do |options| %>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <fieldset>
+      <legend class="text-xs font-medium uppercase tracking-wide text-zinc-500">Style</legend>
+      <div class="mt-1 flex gap-2">
+        <% Creation::IMAGE_STYLES.each do |value, label| %>
+          <label class="flex flex-1 cursor-pointer items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm has-[:checked]:border-amber-400/60 has-[:checked]:bg-amber-400/5">
+            <%= options.radio_button :style, value, checked: @creation.style == value, class: "size-4 accent-amber-400" %>
+            <%= label %>
+          </label>
+        <% end %>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend class="text-xs font-medium uppercase tracking-wide text-zinc-500">Size</legend>
+      <div class="mt-1 flex gap-2">
+        <% Creation::IMAGE_SIZES.each do |value, label| %>
+          <label class="flex flex-1 cursor-pointer items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm has-[:checked]:border-amber-400/60 has-[:checked]:bg-amber-400/5">
+            <%= options.radio_button :size, value, checked: @creation.size == value, class: "size-4 accent-amber-400" %>
+            <%= label %>
+          </label>
+        <% end %>
+      </div>
+    </fieldset>
+  </div>
+<% end %>

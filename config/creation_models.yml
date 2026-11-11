@@ -8,11 +8,18 @@
 #   price:    the provider's price, for docs/COSTS.md and the picker's note
 #   credits:  what the user pays. PLACEHOLDER until credit pricing is decided (docs/TODO.md).
 #
-# Speech is charged per started 1,000 characters (credits_per_1000_characters).
+# Speech is charged per started 1,000 characters (credits_per_1000_characters); images per image
+# (credits_per_image).
 
 video: []
 
-image: []
+image:
+  - key: openai-gpt-image-1-mini
+    name: OpenAI gpt-image-1-mini
+    provider: openai
+    model: gpt-image-1-mini
+    price: "about $0.013 per image (medium quality)"
+    credits_per_image: 5
 
 speech:
   - key: openai-tts-1

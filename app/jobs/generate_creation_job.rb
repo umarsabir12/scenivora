@@ -1,7 +1,7 @@
 require "tmpdir"
 
 # Makes one single-tool creation. Credits were charged when the user asked for it; they are
-# refunded here if it fails. Only speech has a model so far.
+# refunded here if it fails. Speech and image have models so far.
 class GenerateCreationJob < ApplicationJob
   queue_as :default
 
@@ -13,6 +13,7 @@ class GenerateCreationJob < ApplicationJob
 
     case creation.kind
     when "speech" then make_speech(creation)
+    when "image" then make_image(creation)
     else raise Ai::Error, "#{creation.kind.capitalize} has no model yet."
     end
 
@@ -39,15 +40,23 @@ class GenerateCreationJob < ApplicationJob
         paths = results.each_with_index.map do |result, index|
           File.join(dir, format("part-%03d.mp3", index + 1)).tap { |path| File.binwrite(path, result.audio) }
         end
+        joined = File.join(dir, "joined.mp3")
         output = File.join(dir, "speech.mp3")
         ffmpeg = Media::Ffmpeg.new
-        ffmpeg.concat(paths, output)
+        ffmpeg.concat(paths, joined)
+        ffmpeg.master_voice(joined, output)
 
         File.open(output, "rb") do |io|
           creation.file.attach(io: io, filename: "speech-#{creation.id}.mp3", content_type: "audio/mpeg")
         end
         creation.update!(duration_ms: ffmpeg.duration_ms(output))
       end
+    end
+
+    def make_image(creation)
+      result = Ai::ImageGenerator.new(model: creation.model.model).call(prompt: creation.prompt, style: creation.style, size: creation.size)
+      creation.api_usages.create!(provider: creation.model.provider, operation: "create_image", units: 1, cost_usd: result.cost_usd)
+      creation.file.attach(io: StringIO.new(result.image), filename: "image-#{creation.id}.png", content_type: result.content_type)
     end
 
     def refund(creation)

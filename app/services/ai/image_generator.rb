@@ -11,6 +11,8 @@ module Ai
     PROVIDER = "openai".freeze
     DEFAULT_MODEL = "gpt-image-1-mini".freeze
     SIZE = "1536x1024".freeze # landscape, closest to 16:9
+    # The sizes gpt-image-1-mini makes: landscape, portrait, square.
+    SIZES = %w[1536x1024 1024x1536 1024x1024].freeze
     QUALITY = "medium".freeze
 
     # USD per one million tokens, from OpenAI's pricing page (checked 2026-10-26).
@@ -43,10 +45,12 @@ module Ai
       @client = client
     end
 
-    def call(prompt:, style: "photo")
+    def call(prompt:, style: "photo", size: SIZE)
       rules = STYLE_RULES.fetch(style) { raise ArgumentError, "Unknown image style: #{style}" }
+      raise ArgumentError, "Unknown image size: #{size}" unless SIZES.include?(size)
+
       response = client.images.generate(parameters: {
-        model: model, prompt: "#{prompt.strip}\n\n#{rules}", size: SIZE, quality: QUALITY, n: 1
+        model: model, prompt: "#{prompt.strip}\n\n#{rules}", size: size, quality: QUALITY, n: 1
       })
 
       encoded = response.dig("data", 0, "b64_json")

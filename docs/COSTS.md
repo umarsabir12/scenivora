@@ -110,8 +110,14 @@ length, or several hundred scripts with no voice-over.
   about $0.15 and a 1,000-character text about $0.015. Recorded in `ApiUsage` as `create_speech`
   against the creation. Users pay 1 credit per started 1,000 characters (placeholder, set in
   `config/creation_models.yml`). Measured 2026-11-11: 161 characters cost $0.0024 (matches the
-  rate), 9.9 s of audio, 24 kHz mono MP3 at -24.5 LUFS (quiet; not normalised yet).
-- **Create video, Create image, Write text:** no models yet, so no cost.
+  rate), 9.9 s of audio, 24 kHz mono MP3 at -24.5 LUFS. Downloads are now mastered locally (free) to
+  48 kHz, about -16 LUFS.
+- **Create image:** OpenAI `gpt-image-1-mini`, medium quality, about $0.013 per image (cost read from
+  the response's token usage). Recorded as `create_image`. Users pay 5 credits per image
+  (placeholder). Measured 2026-11-11: **$0.0127** for one 1536x1024 photo. A prompt naming a real
+  person and a film character was refused by OpenAI's safety check (400 `moderation_blocked`); no
+  cost was recorded and the credits were refunded.
+- **Create video, Write text:** no models yet, so no cost.
 
 ## Free items
 

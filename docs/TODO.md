@@ -44,7 +44,8 @@ Deferred
 ## Ideas from the Python prototype (`~/Desktop/youtubeautovideo`)
 
 - [ ] Level music by measured loudness (music ~12 dB under the voice) instead of a fixed volume.
-- [ ] Final loudness by measured gain plus a limiter, instead of single-pass loudnorm.
+- [x] Final loudness: the voice is compressed and limited before loudnorm (-16 LUFS). Tried two-pass
+      linear loudnorm too: it falls back to dynamic, since -16 LUFS with -1.5 dBTP needs the peaks cut.
 - [ ] Face-aware crop centre (the prototype uses macOS Vision; production needs another detector).
 - [ ] Word-accurate caption timings with local Whisper (ffmpeg-full includes a whisper filter).
 - [ ] Per-clip crop window for video, to cut a specific logo or burned-in subtitle.
@@ -105,7 +106,7 @@ Deferred
       OpenAI's pricing page, checked 2026-10-27). Confirm word timestamps are still returned before building.
 - [ ] Upload the SRT as a YouTube caption track automatically (needs the youtube.force-ssl OAuth scope).
 - [x] Render polish: image fit with blurred background, Ken Burns zoom alternating in and out, music
-      ducked under the voice, loudness -14 LUFS, vignette.
+      ducked under the voice, loudness -16 LUFS, vignette.
 - [ ] Mark a render as out of date when scenes, music or narration change after it.
 - [ ] Recover a project stuck in `rendering` after a worker crash.
 - [ ] Decide whether rendering and YouTube details charge credits (both currently free to the user).

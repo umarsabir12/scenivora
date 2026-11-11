@@ -29,6 +29,14 @@ module Media
     # Images whose width/height ratio falls in this range fill the frame (cropping a little).
     # Anything narrower or wider is shown whole over a blurred copy of itself.
     FILL_RATIO_RANGE = (1.45..2.2)
+    # The narration's own polish before any mixing: 48 kHz, no rumble under 70 Hz, a gentle
+    # compressor, then a limiter for the few sharp peaks. tts-1 voices arrive near -25 LUFS with
+    # peaks 24 dB over the average; letting loudnorm alone lift them about 10 dB squashed the voice.
+    VOICE_CHAIN = "aresample=48000,highpass=f=70," \
+                  "acompressor=threshold=-24dB:ratio=2.5:attack=15:release=200:makeup=6dB," \
+                  "alimiter=limit=0.84:attack=5:release=60:level=false".freeze
+    # -16 LUFS, not -14: YouTube turns louder audio down anyway, so the extra limiting bought nothing.
+    LOUDNESS = "loudnorm=I=-16:TP=-1.5:LRA=11".freeze
 
     def self.ffmpeg_bin
       ENV["FFMPEG_BIN"].presence || full_build("ffmpeg") || "ffmpeg"
@@ -116,8 +124,8 @@ module Media
 
     # The final pass: draws captions (an ASS file) over a dark band, adds a light vignette, and
     # mixes the narration with optional music, which loops, ducks under the voice and fades out.
-    # The mix is normalised to -14 LUFS for YouTube, and the output is exactly as long as the
-    # narration.
+    # The voice gets VOICE_CHAIN, the mix is normalised to -16 LUFS, and the output is exactly as
+    # long as the narration.
     def finish(video_path:, narration_path:, output_path:, duration_ms:, music_path: nil, music_volume: 0.0, captions_path: nil)
       seconds = duration_ms / 1000.0
       work_dir = File.dirname(output_path)
@@ -130,22 +138,28 @@ module Media
       end
 
       inputs = [ "-i", video_path, "-i", narration_path ]
-      loudness = "loudnorm=I=-14:TP=-1.5:LRA=11"
       audio =
         if music_path
           inputs += [ "-stream_loop", "-1", "-i", music_path ]
           fade_start = format("%.3f", [ seconds - FADE_OUT_SECONDS, 0 ].max)
           "[2:a]volume=#{format("%.2f", music_volume)},afade=t=in:d=1.5,afade=t=out:st=#{fade_start}:d=#{FADE_OUT_SECONDS}[bed];" \
-          "[1:a]asplit=2[voice][key];" \
+          "[1:a]#{VOICE_CHAIN},asplit=2[voice][key];" \
           "[bed][key]sidechaincompress=threshold=0.03:ratio=6:attack=40:release=450[ducked];" \
-          "[voice][ducked]amix=inputs=2:duration=first:normalize=0,#{loudness}[a]"
+          "[voice][ducked]amix=inputs=2:duration=first:normalize=0,#{LOUDNESS}[a]"
         else
-          "[1:a]#{loudness}[a]"
+          "[1:a]#{VOICE_CHAIN},#{LOUDNESS}[a]"
         end
 
       ffmpeg!(*inputs, "-filter_complex", "[0:v]#{video.join(",")}[v];#{audio}", "-map", "[v]", "-map", "[a]",
               "-t", format("%.3f", seconds), "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p",
               "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", output_path, chdir: work_dir)
+      output_path
+    end
+
+    # A voice-only file made ready to download: VOICE_CHAIN, -16 LUFS, 48 kHz MP3.
+    def master_voice(input_path, output_path)
+      ffmpeg!("-i", input_path, "-af", "#{VOICE_CHAIN},#{LOUDNESS}", "-ar", "48000",
+              "-c:a", "libmp3lame", "-b:a", "192k", output_path)
       output_path
     end
 

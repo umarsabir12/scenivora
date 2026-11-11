@@ -1,0 +1,5 @@
+<div class="flex flex-wrap items-center gap-3">
+  <audio controls preload="metadata" class="h-9 min-w-0 flex-1 basis-64" src="<%= rails_blob_path(creation.file, disposition: "inline") %>"></audio>
+  <span class="text-xs text-zinc-500"><%= format_timecode(creation.duration_ms.to_i) %> · <%= creation.voice.to_s.capitalize %> at <%= format("%.2f", creation.speed) %>x</span>
+  <%= link_to "Download MP3", rails_blob_path(creation.file, disposition: "attachment"), class: small_button_classes %>
+</div>

@@ -81,4 +81,43 @@ class CreationsControllerTest < ActionDispatch::IntegrationTest
     assert_select "a[href=?][aria-current=page]", creations_path("speech"), text: /Text to speech/
     assert_select "a[href=?]", creations_path("video"), text: /Soon/
   end
+
+  def image_params(style: "photo", size: "1024x1024")
+    { creation: { model_key: "openai-gpt-image-1-mini", prompt: "A lighthouse at dawn", options: { style: style, size: size } } }
+  end
+
+  test "create image shows the model with its price, styles and sizes" do
+    get creations_url("image")
+
+    assert_select "h1", "Create image"
+    assert_select "select[name=?] option", "creation[model_key]", text: /gpt-image-1-mini · 5 credits per image/
+    assert_select "input[type=radio][name=?]", "creation[options][style]", count: Creation::IMAGE_STYLES.size
+    assert_select "input[type=radio][name=?]", "creation[options][size]", count: Creation::IMAGE_SIZES.size
+  end
+
+  test "an image costs its flat credit price" do
+    assert_enqueued_with(job: GenerateCreationJob) { post creations_url("image"), params: image_params }
+
+    assert_equal 5, @user.creations.last.credits_charged
+    assert_equal 5, @user.reload.credits_balance
+  end
+
+  test "an unknown image size is refused before charging" do
+    post creations_url("image"), params: image_params(size: "4000x4000")
+
+    assert_equal "Choose a size", flash[:alert]
+    assert_equal 10, @user.reload.credits_balance
+  end
+
+  test "a finished image shows with a download" do
+    creation = @user.creations.create!(kind: "image", model_key: "openai-gpt-image-1-mini", prompt: "A lighthouse",
+                                       status: "ready", options: { "style" => "illustration", "size" => "1024x1536" })
+    creation.file.attach(io: StringIO.new("\x89PNG".b), filename: "image.png", content_type: "image/png")
+
+    get creations_url("image")
+
+    assert_select "img[alt=?]", "A lighthouse"
+    assert_select "a", text: "Download PNG"
+    assert_match "Painted illustration · Portrait", response.body
+  end
 end

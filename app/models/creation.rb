@@ -2,7 +2,11 @@
 # YouTube project. Credits are charged when it's asked for and refunded if it fails.
 class Creation < ApplicationRecord
   MAX_SPEECH_CHARACTERS = 10_000
+  MAX_IMAGE_PROMPT = 1_000
   SPEED_RANGE = (0.75..1.25).freeze
+  # Styles the image tool offers; the generator adds its safety rules (no real faces, text or logos).
+  IMAGE_STYLES = { "photo" => "Photo", "illustration" => "Painted illustration" }.freeze
+  IMAGE_SIZES = { "1536x1024" => "Landscape", "1024x1536" => "Portrait", "1024x1024" => "Square" }.freeze
 
   belongs_to :user
   has_many :api_usages, dependent: :nullify
@@ -13,8 +17,10 @@ class Creation < ApplicationRecord
   validates :kind, inclusion: { in: CreationModels::KINDS }
   validates :prompt, presence: true
   validates :prompt, length: { maximum: MAX_SPEECH_CHARACTERS }, if: -> { kind == "speech" }
+  validates :prompt, length: { maximum: MAX_IMAGE_PROMPT }, if: -> { kind == "image" }
   validate :known_model
   validate :speech_options, if: -> { kind == "speech" }
+  validate :image_options, if: -> { kind == "image" }
 
   scope :recent, -> { order(created_at: :desc) }
 
@@ -24,6 +30,8 @@ class Creation < ApplicationRecord
 
   def voice = options["voice"]
   def speed = options["speed"].to_f
+  def style = options["style"]
+  def size = options["size"]
 
   # Charges the user and queues the work. Raises User::InsufficientCredits when the balance is too low.
   def self.start!(user, attributes)
@@ -47,5 +55,10 @@ class Creation < ApplicationRecord
     def speech_options
       errors.add(:base, "Choose a voice") unless Ai::SpeechGenerator::VOICES.key?(voice)
       errors.add(:base, "Speed must be between #{SPEED_RANGE.min} and #{SPEED_RANGE.max}") unless SPEED_RANGE.cover?(speed)
+    end
+
+    def image_options
+      errors.add(:base, "Choose a style") unless IMAGE_STYLES.key?(style)
+      errors.add(:base, "Choose a size") unless IMAGE_SIZES.key?(size)
     end
 end

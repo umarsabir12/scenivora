@@ -27,6 +27,10 @@ class GenerateCreationJobTest < ActiveJob::TestCase
       File.binwrite(output_path, part_paths.map { |path| File.read(path) }.join)
     end
 
+    def master_voice(input_path, output_path)
+      File.binwrite(output_path, File.binread(input_path))
+    end
+
     def duration_ms(_path) = DURATION_MS
   end
 
@@ -85,5 +89,55 @@ class GenerateCreationJobTest < ActiveJob::TestCase
     run_job(creation, speech: FakeSpeech.new(error: Ai::Error.new("should not be called")))
 
     assert_equal 4, @user.reload.credits_balance
+  end
+
+  # Fake image provider: a PNG stand-in, or an error.
+  class FakeImages
+    attr_reader :calls
+
+    def initialize(error: nil)
+      @calls = []
+      @error = error
+    end
+
+    def call(prompt:, style:, size:)
+      raise @error if @error
+
+      @calls << { prompt: prompt, style: style, size: size }
+      Ai::ImageGenerator::Result.new(image: "\x89PNG".b, content_type: "image/png", provider: "openai",
+                                     model: "gpt-image-1-mini", cost_usd: BigDecimal("0.013"))
+    end
+  end
+
+  def image_creation
+    @user.update!(credits_balance: 10)
+    Creation.start!(@user, kind: "image", model_key: "openai-gpt-image-1-mini", prompt: "A lighthouse at dawn",
+                           options: { "style" => "illustration", "size" => "1024x1536" })
+  end
+
+  test "makes the image with the chosen style and size, and records its cost" do
+    creation = image_creation
+    images = FakeImages.new
+
+    with_stubbed_new(Ai::ImageGenerator, images) { GenerateCreationJob.perform_now(creation) }
+
+    assert creation.reload.ready?
+    assert_equal [ { prompt: "A lighthouse at dawn", style: "illustration", size: "1024x1536" } ], images.calls
+    assert_equal "image/png", creation.file.content_type
+    usage = creation.api_usages.sole
+    assert_equal [ "create_image", 1, BigDecimal("0.013") ], [ usage.operation, usage.units, usage.cost_usd ]
+  end
+
+  test "a failed image refunds its credits" do
+    creation = image_creation
+    assert_equal 5, @user.reload.credits_balance
+
+    with_stubbed_new(Ai::ImageGenerator, FakeImages.new(error: Ai::Error.new("Rejected by the safety system."))) do
+      GenerateCreationJob.perform_now(creation)
+    end
+
+    assert creation.reload.failed?
+    assert_equal "Rejected by the safety system.", creation.error
+    assert_equal 10, @user.reload.credits_balance
   end
 end

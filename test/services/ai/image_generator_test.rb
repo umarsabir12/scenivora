@@ -86,4 +86,13 @@ class Ai::ImageGeneratorTest < ActiveSupport::TestCase
     generator_with(images).call(prompt: "The city of Medina at dusk", style: "no_figure")
     assert_includes images.parameters[:prompt], "no people in it at all"
   end
+
+  test "a portrait or square size can be asked for, and an unknown one is refused" do
+    images = FakeImages.new(response: response)
+
+    generator_with(images).call(prompt: "A lighthouse", size: "1024x1536")
+    assert_equal "1024x1536", images.parameters[:size]
+
+    assert_raises(ArgumentError) { generator_with(images).call(prompt: "A lighthouse", size: "4000x4000") }
+  end
 end
