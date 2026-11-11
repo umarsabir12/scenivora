@@ -11,7 +11,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800&family=JetBrains+Mono:wght@500&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800&family=Inter:wght@800&family=JetBrains+Mono:wght@500&display=swap">
     <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>
   </head>
@@ -24,10 +24,7 @@
         <canvas class="absolute inset-0 size-full" data-landing-stage-target="canvas" aria-hidden="true"></canvas>
         <div class="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(15,16,22,.7)_0%,rgba(15,16,22,0)_35%,rgba(15,16,22,0)_55%,rgba(15,16,22,.95)_100%)]"></div>
 
-        <%= link_to root_path, class: "relative flex items-center gap-2.5 self-start font-['Big_Shoulders_Display',sans-serif] text-2xl font-extrabold uppercase tracking-[.06em]" do %>
-          <span class="relative size-[22px] rounded-full border-2 border-[#f0a43a] after:absolute after:left-[6px] after:top-[3px] after:border-y-[5px] after:border-l-[8px] after:border-y-transparent after:border-l-[#f0a43a]" aria-hidden="true"></span>
-          Scenivora
-        <% end %>
+        <%= link_to root_path, class: "relative self-start", aria: { label: "Scenivora home" } do %><%= render "layouts/logo", size: "1.6rem" %><% end %>
 
         <div class="relative max-w-md space-y-5">
           <h2 class="font-['Big_Shoulders_Display',sans-serif] text-6xl font-extrabold uppercase leading-[.92] text-balance">
@@ -43,7 +40,7 @@
 
       <main class="flex flex-col px-4 py-8 sm:px-8">
         <div class="flex items-center justify-between">
-          <%= link_to "Scenivora", root_path, class: "font-['Big_Shoulders_Display',sans-serif] text-2xl font-extrabold uppercase tracking-[.06em] lg:invisible" %>
+          <%= link_to root_path, class: "lg:invisible", aria: { label: "Scenivora home" } do %><%= render "layouts/logo", size: "1.3rem" %><% end %>
           <%= link_to "← Home", root_path, class: "text-sm text-zinc-400 hover:text-zinc-100" %>
         </div>
 

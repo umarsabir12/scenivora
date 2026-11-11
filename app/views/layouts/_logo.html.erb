@@ -1,0 +1,15 @@
+<%# The Scenivora logo, redrawn from the "A · Scene stack" logo sheet: three stacked scene frames
+    with a play button, and the wordmark with "vora" in amber. Styled inline so it also works on the
+    landing page, which doesn't load Tailwind. Locals: size (font size, default 1.25rem),
+    wordmark (default true). %>
+<span style="display:inline-flex;align-items:center;gap:.5em;font-size:<%= local_assigns.fetch(:size, "1.25rem") %>;line-height:1">
+  <svg viewBox="0 0 110 101" style="height:1.3em;width:auto;flex-shrink:0" aria-hidden="true">
+    <rect x="26" width="84" height="62" rx="10" fill="#4f3f24"/>
+    <rect x="13" y="19.5" width="84" height="62" rx="10" fill="#9e7836"/>
+    <rect y="39" width="84" height="62" rx="10" fill="#f4b545"/>
+    <path d="M33 54.5 59 69.75 33 85z" fill="#111318"/>
+  </svg>
+  <% if local_assigns.fetch(:wordmark, true) %>
+    <span style="font-family:Inter,'Helvetica Neue',Arial,sans-serif;font-weight:800;letter-spacing:-.045em;color:#eceef2">Sceni<span style="color:#f4b545">vora</span></span>
+  <% end %>
+</span>

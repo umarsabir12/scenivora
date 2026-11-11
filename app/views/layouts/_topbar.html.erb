@@ -8,7 +8,7 @@
     </svg>
   </button>
 
-  <%= link_to "Scenivora", root_path, class: "font-semibold md:hidden" %>
+  <%= link_to root_path, class: "md:hidden", aria: { label: "Scenivora home" } do %><%= render "layouts/logo", size: "1.1rem" %><% end %>
 
   <div class="ml-auto flex items-center gap-4">
     <div class="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-zinc-200 sm:flex" title="Credit balance">

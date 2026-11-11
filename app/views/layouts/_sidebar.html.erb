@@ -3,11 +3,8 @@
 <aside id="sidebar"
        class="fixed inset-y-0 left-0 z-40 flex w-60 -translate-x-full flex-col border-r border-white/5 bg-[#0f1116] transition-transform duration-200 md:sticky md:top-0 md:h-screen md:translate-x-0"
        data-sidebar-target="panel">
-  <div class="flex h-16 items-center gap-2 px-5">
-    <span class="flex size-7 items-center justify-center rounded-md bg-[#f0b95a] text-zinc-950" aria-hidden="true">
-      <svg class="size-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-    </span>
-    <span class="font-semibold tracking-tight">Scenivora</span>
+  <div class="flex h-16 items-center px-5">
+    <%= link_to root_path, aria: { label: "Scenivora home" } do %><%= render "layouts/logo", size: "1.2rem" %><% end %>
   </div>
 
   <nav class="flex-1 space-y-1 px-3 py-3 text-sm" aria-label="Main">
