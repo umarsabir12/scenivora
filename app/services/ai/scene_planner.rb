@@ -19,6 +19,7 @@ module Ai
     end
 
     SUBJECT_TYPES = %w[real_person real_place historical_event object generic_scene abstract].freeze
+    UNPLANNED_SUBJECT = "object".freeze
     MAX_QUERIES = 4
     MAX_TOPIC_ARTICLES = 6
     MAX_BEAT_ARTICLES = 2
@@ -33,6 +34,7 @@ module Ai
        "beats": [
         {
           "beat": <number>,
+          "opening": "<the first 4 words of that beat's narration, copied exactly>",
           "subject": "<by name: the real person, place, ship, building or event this beat shows>",
           "articles": ["<0-2 exact English Wikipedia article titles about that subject>"],
           "visual_intent": "<one sentence: what the viewer should see>",
@@ -45,6 +47,8 @@ module Ai
       ]}
 
       Rules:
+      - Return exactly one entry per beat, in order, even when two beats show the same thing. Never
+        merge, skip or reorder beats: each entry describes the beat whose number and opening it gives.
       - Use what you know of the real history, not only the narration's words. When the narration says
         "a ship", "his mother" or "the palace", the subject, visual_intent, queries and articles name
         the real ship, person or place: for Napoleon's exile, "the ship" is HMS Northumberland and
@@ -109,13 +113,21 @@ module Ai
     # scenes: records with position, text and duration_ms. research: the project's stored research
     # (facts, articles, visual_subjects), when the script was written from it. pictures: short
     # descriptions of the pictures found in the research articles.
+    # Scenes the answer skipped, or whose entry quotes another scene's opening, are asked for once
+    # more on their own: the cheap model sometimes merges beats and slides the rest onto the wrong
+    # scenes (19 scenes once came back as 14 entries, the last ones describing later scenes).
     def call(topic:, scenes:, research: nil, pictures: [])
-      prompt = self.class.user_prompt(topic, scenes)
-      prompt += self.class.research_notes(research, pictures) if research
-      result = @generator.call(system_prompt: (research ? RESEARCHED_PROMPT : "") + SYSTEM_PROMPT, user_prompt: prompt,
-                               temperature: 0.2, json: true)
+      data, tokens, cost = ask(topic, scenes, research, pictures)
+      missing = scenes.reject { |scene| beat_for(data, scene) }
+      if missing.any?
+        retried, more_tokens, more_cost = ask(topic, missing, research, pictures)
+        kept = (scenes - missing).filter_map { |scene| beat_for(data, scene) }
+        data = data.merge("beats" => kept + Array(retried["beats"]))
+        tokens += more_tokens
+        cost += more_cost
+      end
 
-      plan = result_from(parse_json(result.text), scenes, total_tokens: result.total_tokens, cost_usd: result.cost_usd)
+      plan = result_from(data, scenes, total_tokens: tokens, cost_usd: cost)
       research ? only_researched_articles(plan, research) : plan
     end
 
@@ -139,7 +151,7 @@ module Ai
 
     def self.user_prompt(topic, scenes)
       beats = scenes.map { |scene| "Beat #{scene.position} (#{(scene.duration_ms / 1000.0).round(1)} s): #{scene.text}" }
-      "Topic: #{topic}\n\n#{beats.join("\n")}"
+      "Topic: #{topic}\n\n#{beats.join("\n")}\n\nThere are #{scenes.size} beats: return #{scenes.size} entries."
     end
 
     # Shared with the Director, which answers in the same shape.
@@ -150,6 +162,35 @@ module Ai
     end
 
     private
+      def ask(topic, scenes, research, pictures)
+        prompt = self.class.user_prompt(topic, scenes)
+        prompt += self.class.research_notes(research, pictures) if research
+        result = @generator.call(system_prompt: (research ? RESEARCHED_PROMPT : "") + SYSTEM_PROMPT, user_prompt: prompt,
+                                 temperature: 0.2, json: true)
+        [ parse_json(result.text), result.total_tokens.to_i, result.cost_usd.to_d ]
+      end
+
+      # The answer's entry for this scene, or nil when it skipped the scene or the entry quotes another
+      # scene's opening words.
+      def beat_for(data, scene)
+        beat = Array(data["beats"]).find { |entry| entry.is_a?(Hash) && entry["beat"].to_i == scene.position }
+        beat if beat && opening_matches?(beat["opening"], scene.text)
+      end
+
+      # Compares the first few words, ignoring case, punctuation and apostrophes. An entry without an
+      # opening (the Director's answers have none) is taken on its number alone.
+      def opening_matches?(opening, text)
+        quoted = words(opening)
+        return true if quoted.empty?
+
+        count = [ quoted.size, 3 ].min
+        quoted.first(count) == words(text).first(count)
+      end
+
+      def words(text)
+        text.to_s.downcase.delete("'’").scan(/[[:alnum:]]+/)
+      end
+
       # The cheap model can invent titles. With research, only its checked titles are kept, so no
       # search is wasted on an article that doesn't exist.
       def only_researched_articles(result, research)
@@ -166,12 +207,11 @@ module Ai
         raise Ai::Error, "Scene planner returned invalid JSON"
       end
 
-      # Scenes the model skipped or answered badly get an empty plan, so the caller can fall back.
+      # A scene still without an entry gets a plan with no queries. It counts as a scene with a subject,
+      # not a mood scene, so it gets an AI image when nothing fits rather than unrelated filler footage.
       def plans_from(data, scenes)
-        by_number = Array(data["beats"]).index_by { |beat| beat["beat"].to_i }
-
         scenes.to_h do |scene|
-          beat = by_number[scene.position] || {}
+          beat = beat_for(data, scene) || { "subject_type" => UNPLANNED_SUBJECT, "ai_fallback_allowed" => true }
           [ scene.position, plan_for(scene.position, beat) ]
         end
       end

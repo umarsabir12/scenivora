@@ -92,13 +92,69 @@ class Ai::ScenePlannerTest < ActiveSupport::TestCase
     assert_equal true, result.plans[2].ai_fallback_allowed
   end
 
-  test "a scene the model skipped gets an empty plan" do
+  test "a scene still skipped after the retry gets an empty plan that is not a mood scene" do
     text = { beats: [ { beat: 1, search_queries: [ "Tesla" ] } ] }.to_json
 
-    planner, = planner_for(text)
+    planner, generator = planner_for(text)
     result = planner.call(topic: "Tesla", scenes: beats)
 
-    assert_equal [], result.plans[2].search_queries
+    plan = result.plans[2]
+    assert_equal [], plan.search_queries
+    assert_equal "object", plan.subject_type
+    assert_not_includes FindSceneImagesJob::MOOD_SUBJECTS, plan.subject_type
+    assert plan.ai_fallback_allowed
+    assert_equal 2, generator.calls.size
+  end
+
+  # Answers each call in turn and records what was sent.
+  class SequenceGenerator
+    attr_reader :calls
+
+    def initialize(*texts)
+      @texts = texts
+      @calls = []
+    end
+
+    def call(**args)
+      @calls << args
+      Ai::TextGenerator::Result.new(text: @texts.shift.to_json, provider: "openai", model: "gpt-4o-mini",
+                                    total_tokens: 900, cost_usd: BigDecimal("0.0002"))
+    end
+  end
+
+  test "skipped scenes and entries quoting another scene's opening are asked for again on their own" do
+    scenes = beats + [ Beat.new(3, "Edison's company refused to pay him.", 10_000) ]
+    first = { beats: [
+      { beat: 1, opening: "Nikola Tesla was born", subject_type: "real_person", search_queries: [ "Nikola Tesla" ] },
+      # Scene 3's words on scene 2: the answer merged beats and slid. Scene 3 is missing.
+      { beat: 2, opening: "Edison's company refused to", subject_type: "real_person", search_queries: [ "Thomas Edison" ] }
+    ] }
+    second = { beats: [
+      { beat: 2, opening: "He moved to New", subject_type: "real_place", search_queries: [ "New York 1884" ] },
+      { beat: 3, opening: "Edison’s company refused to", subject_type: "real_person", search_queries: [ "Thomas Edison" ] }
+    ] }
+    generator = SequenceGenerator.new(first, second)
+
+    result = Ai::ScenePlanner.new(generator: generator).call(topic: "Tesla", scenes: scenes)
+
+    retry_prompt = generator.calls.second[:user_prompt]
+    assert_no_match "Beat 1 ", retry_prompt
+    assert_match "Beat 2 (10.0 s): He moved to New York.", retry_prompt
+    assert_match "There are 2 beats: return 2 entries.", retry_prompt
+    assert_equal [ "Nikola Tesla" ], result.plans[1].search_queries
+    assert_equal [ "New York 1884" ], result.plans[2].search_queries
+    assert_equal [ "Thomas Edison" ], result.plans[3].search_queries, "a curly apostrophe still matches"
+    assert_equal 1800, result.total_tokens
+    assert_equal BigDecimal("0.0004"), result.cost_usd
+  end
+
+  test "a full answer with matching openings is not asked for again" do
+    answer = { beats: [ { beat: 1, opening: "Nikola Tesla was born" }, { beat: 2, opening: "He moved to New" } ] }
+    generator = SequenceGenerator.new(answer)
+
+    Ai::ScenePlanner.new(generator: generator).call(topic: "Tesla", scenes: beats)
+
+    assert_equal 1, generator.calls.size
   end
 
   test "unknown subject types become generic_scene and queries are capped" do
