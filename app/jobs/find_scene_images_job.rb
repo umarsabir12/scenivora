@@ -29,8 +29,8 @@ class FindSceneImagesJob < ApplicationJob
   HOOK_SCENES = 2
   MAX_VIDEOS = 2
   MAX_VIDEO_SEARCHES = 3
-  # Scenes Pixabay footage may serve: present-day footage can show a place or a mood, not a past moment.
-  PIXABAY_VIDEO_SUBJECTS = %w[real_place generic_scene abstract].freeze
+  # Scenes Pixabay photos and footage may serve: present-day stock can show a place or a mood, not a past moment.
+  PIXABAY_SUBJECTS = %w[real_place generic_scene abstract].freeze
   PLANNING_FAILED = "Scene planning failed. Create scene again to retry.".freeze
 
   # Fetches each article's pictures once per run, so the library can be built from the research
@@ -400,7 +400,7 @@ class FindSceneImagesJob < ApplicationJob
     # The plan's queries from broad to specific: the broad ones (usually the place's name) find footage
     # of the place itself, and every word of the query must be in a clip's tags.
     def pixabay_videos(scene)
-      return [] unless pixabay_key.present? && PIXABAY_VIDEO_SUBJECTS.include?(scene.plan["subject_type"])
+      return [] unless pixabay_key.present? && PIXABAY_SUBJECTS.include?(scene.plan["subject_type"])
 
       queries = [ scene.search_query, *scene.plan["search_queries"] ].compact_blank.uniq.reverse.first(MAX_VIDEO_SEARCHES)
       queries.each do |query|
@@ -486,7 +486,7 @@ class FindSceneImagesJob < ApplicationJob
         next if broader.include?(query) && found + results.size >= MAX_CANDIDATES
 
         begin
-          results = (results + search_sources(query, POOL_SIZE / 2)).uniq(&:image_url)
+          results = (results + search_sources(scene, query, POOL_SIZE / 2)).uniq(&:image_url)
         rescue Media::Error => e
           last_error = e
         end
@@ -496,9 +496,9 @@ class FindSceneImagesJob < ApplicationJob
       results
     end
 
-    def search_sources(query, limit)
+    def search_sources(scene, query, limit)
       results = Media::CommonsSearch.new.search(query, limit: limit)
-      if pixabay_key && results.size < limit
+      if pixabay_key.present? && PIXABAY_SUBJECTS.include?(scene.plan["subject_type"]) && results.size < limit
         results += Media::PixabaySearch.new(api_key: pixabay_key).search(query, limit: limit - results.size)
       end
       results

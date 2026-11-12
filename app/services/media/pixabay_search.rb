@@ -1,5 +1,6 @@
 module Media
-  # Searches Pixabay for photos. Needs PIXABAY_API_KEY (free account).
+  # Searches Pixabay for photos. Needs PIXABAY_API_KEY (free account). A photo's tags become its
+  # description: they are the only words Pixabay gives about it, and the scoring needs words to match.
   class PixabaySearch
     ENDPOINT = "https://pixabay.com/api/".freeze
     PROVIDER = "pixabay".freeze
@@ -20,7 +21,8 @@ module Media
           image_url: hit["webformatURL"],
           page_url: hit["pageURL"],
           credit: "#{hit["user"]} on Pixabay",
-          license: LICENSE
+          license: LICENSE,
+          description: hit["tags"].to_s.squish.presence
         )
       end
     end

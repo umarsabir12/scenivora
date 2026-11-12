@@ -390,6 +390,20 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     assert @project.reload.scenes.first.images.map(&:provider).include?("wikimedia_commons")
   end
 
+  test "Pixabay photos are searched for places and moods" do
+    pixabay = CountingSearch.new(provider: "pixabay")
+    run_job(commons: FixedSearch.new([]), pixabay: pixabay, planner: FakePlanner.new(subject_type: "real_place"), pixabay_key: "key")
+
+    assert_not_empty pixabay.queries
+  end
+
+  test "Pixabay photos are never searched for a person or a past event" do
+    pixabay = CountingSearch.new(provider: "pixabay")
+    run_job(commons: FixedSearch.new([]), pixabay: pixabay, planner: FakePlanner.new(subject_type: "real_person"), pixabay_key: "key")
+
+    assert_empty pixabay.queries
+  end
+
   test "clears the searching flag when finished" do
     @project.update!(settings: { "scenes_searching" => true })
 

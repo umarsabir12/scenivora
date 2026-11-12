@@ -17,13 +17,15 @@ class Media::PixabaySearchTest < ActiveSupport::TestCase
 
   test "maps hits to images with the photographer credit" do
     http = FakeHttp.new("hits" => [ {
-      "webformatURL" => "https://pixabay.example/a.jpg", "pageURL" => "https://pixabay.example/p/1", "user" => "jane"
+      "webformatURL" => "https://pixabay.example/a.jpg", "pageURL" => "https://pixabay.example/p/1", "user" => "jane",
+      "tags" => "boxing ring, boxing,  sport"
     } ])
 
     results = Media::PixabaySearch.new(api_key: "test-key", http: http).search("tesla", limit: 3)
 
     assert_equal 1, results.size
     assert_equal "jane on Pixabay", results.first.credit
+    assert_equal "boxing ring, boxing, sport", results.first.description, "tags are the words the scoring matches"
     assert_equal "Pixabay Content License", results.first.license
     assert_equal "test-key", http.calls.first.last[:key]
   end
