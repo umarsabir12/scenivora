@@ -5,7 +5,9 @@
 class ProduceVideoJob < ApplicationJob
   queue_as :default
 
-  MAX_AI_IMAGES = 8
+  # Enough for a topic with few free pictures (a film, a sports star): at about $0.013 an image, 15 cost
+  # about $0.19, within the $0.50 run budget.
+  MAX_AI_IMAGES = 15
   FAILED = "Creating the video failed. Try again.".freeze
   # The AI provider account (not the user's credits) has run out, so trying again now won't help.
   OUT_OF_CREDITS = "The AI service is out of credit, so the video couldn't be made. Try again later.".freeze

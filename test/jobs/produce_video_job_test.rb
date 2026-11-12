@@ -80,11 +80,13 @@ class ProduceVideoJobTest < ActiveJob::TestCase
   end
 
   test "no more than MAX_AI_IMAGES are started at once, hook scenes first" do
-    long_script = (1..10).map { |n| "Shot #{n} shows HMS Calypso at sea." }.join("\n\n")
+    count = ProduceVideoJob::MAX_AI_IMAGES + 2
+    @user.grant_credits!(count * CreditPricing.ai_image, reason: "test")
+    long_script = (1..count).map { |n| "Shot #{n} shows HMS Calypso at sea." }.join("\n\n")
     writer = FakeWriter.new
     writer.define_singleton_method(:write) { |project| project.scripts.create!(body: long_script, version: 1) }
 
-    produce(writer: writer, needs_ai: (1..10).to_a)
+    produce(writer: writer, needs_ai: (1..count).to_a)
 
     generating = @project.reload.scenes.select(&:ai_generating?).map(&:position)
     assert_equal (1..ProduceVideoJob::MAX_AI_IMAGES).to_a, generating

@@ -128,7 +128,7 @@ the page shows "Generating..." or "Starting..." until it starts.
    ("Focus on the escape"), pick a tone and length, and click **Create video**. The
    project opens on its storyboard straight away, which shows the progress (about 5 to 10
    minutes; measured 8.5 minutes for a 3-minute video with 21 scenes): researching and writing the script, finding and checking a picture for each scene,
-   and starting AI images (up to 8, paid in credits) where no real picture fits. Filter the
+   and starting AI images (up to 15, paid in credits) where no real picture fits. Filter the
    list with All, In progress or Rendered.
 3. **Storyboard.** One card per scene (one short paragraph of narration, one picture). Edit a
    scene's narration and **Save text**, **Delete scene**, swap, upload or generate an AI image for
@@ -214,7 +214,7 @@ refreshing the storyboard page:
 - `StoryboardScenes` lays the paragraphs out as scenes (a paragraph over 45 words is split at
   sentences), timed from their words at 150 per minute; `settings["storyboard"]` marks the project.
 - `FindSceneImagesJob` plans, finds, checks and reviews a picture for each scene (see below).
-- AI images start for up to 8 "AI image suggested" scenes, hook scenes first, while the user's
+- AI images start for up to 15 "AI image suggested" scenes, hook scenes first, while the user's
   credits last; a note says how many are left.
 
 Storyboard projects run storyboard (`script_ready`) → approved (`scenes_ready`) → voice confirmed
