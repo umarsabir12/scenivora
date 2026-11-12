@@ -323,7 +323,7 @@ plan reads the same research (and the pictures found in its articles) instead of
    city, harbour, mist), all public domain or under an accepted licence. The clip is picked by the
    scene's words ("sailed" → sea, "legend" → mist, "war" → fire; calm clouds or mist otherwise),
    without repeating a clip while others are left, and with no modern city footage in a video whose
-   brief, scene or research names a year before 1960. Mood scenes keep their filler (badge
+   brief, scene or research names a year before 2000. Mood scenes keep their filler (badge
    **Filler**). Scenes waiting for an AI image show a filler meanwhile, so the storyboard has no gaps
    and can be approved before every AI image is made; the AI image replaces it when generated.
    Scenes whose planning failed stay empty, so the retry message shows.

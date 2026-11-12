@@ -37,8 +37,9 @@ class Media::FillersTest < ActiveSupport::TestCase
     assert_not_equal "https://upload.wikimedia.org/city.webm", @fillers.pick("Fame came to the city.", historical: true).video_url
   end
 
-  test "a video naming a year before 1960 is historical" do
+  test "a video naming a year before 2000 is historical" do
     assert Media::Fillers.historical?("The Great Molasses Flood of 1919")
+    assert Media::Fillers.historical?("In 1975 Stallone wrote Rocky"), "a 2023 skyline would pass for 1975 New York"
     assert_not Media::Fillers.historical?("Ronaldo's 2016 Euro win")
     assert_not Media::Fillers.historical?("How bees make honey")
   end

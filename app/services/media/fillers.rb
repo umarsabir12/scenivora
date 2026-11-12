@@ -21,7 +21,9 @@ module Media
     }.freeze
     # Without a telling word, one of these calm moods is used.
     NEUTRAL = %w[clouds mist landscape night_sky].freeze
-    MODERN_BEFORE = 1960
+    # The modern clips are 2010s-2020s skylines and harbours. A story set before 2000 (Rocky in 1975)
+    # would show them as the past, so a video naming an earlier year keeps them out.
+    MODERN_BEFORE = 2000
     YEAR = /(?<!\d)(1[5-9]\d\d|20[0-3]\d)(?!\d)/
 
     def self.clips
