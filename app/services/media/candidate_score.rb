@@ -15,6 +15,10 @@ module Media
     FIELDS = { title: 1.5, categories: 1.0, description: 1.0 }.freeze
     MAX_WORD_POINTS = 9.0
     OWN_ARTICLE = { first: 2.5, other: 1.5 }.freeze
+    # Commons says the picture depicts the subject of one of the scene's articles: that exact person,
+    # ship or place, whatever the file is named. With its own article it reaches MIN_SCORE by itself;
+    # a photo from decades later still loses its late penalty.
+    DEPICTS_POINTS = 3.5
     YEAR_POINTS = { 3 => 3.0, 10 => 1.0 }.freeze
     # A photo taken long after the moment shows something else: a modern street, a reunion. A later
     # portrait still introduces a person, so it loses little; nothing is lost when the scene speaks of today.
@@ -107,7 +111,8 @@ module Media
         index = @articles.index(candidate.source_article.to_s.squish)
         return 0 unless index
 
-        index.zero? ? OWN_ARTICLE[:first] : OWN_ARTICLE[:other]
+        points = index.zero? ? OWN_ARTICLE[:first] : OWN_ARTICLE[:other]
+        candidate.provider == CommonsCategoryImages::DEPICTS_PROVIDER ? points + DEPICTS_POINTS : points
       end
 
       def named_file_points(candidate)

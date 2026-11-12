@@ -271,7 +271,11 @@ plan reads the same research (and the pictures found in its articles) instead of
    Commons category and its subcategories (`Media::CommonsCategoryImages`: the category comes from
    the article's Wikidata item, P373, and is searched with `deepcategory:`). The category is usually
    several times bigger than the article ("Great Molasses Flood" shows 6 pictures; its category holds
-   24, including the City of Boston Archives photos). Keeps free-licence photos only, dedupes them and
+   24, including the City of Boston Archives photos). Before the category come the photos Commons
+   tags as depicting the article's subject (structured data, `haswbstatement:P180=Q…`, provider
+   `commons_depicts`): that exact person, ship or place, whatever the file is named. They score
+   `CandidateScore::DEPICTS_POINTS` extra, enough to reach the picture check by themselves; a photo
+   decades after the scene still loses its late penalty. Keeps free-licence photos only, dedupes them and
    keeps up to 300. Titles that don't exist are skipped with a log line. Free licence means one that
    allows a monetised video (`CommonsSearch::ALLOWED_LICENSE`): public domain, "No restrictions"
    (Flickr Commons archives such as the Library of Congress), CC0, CC BY and BY-SA in any version or

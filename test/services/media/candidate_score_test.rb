@@ -37,6 +37,19 @@ class Media::CandidateScoreTest < ActiveSupport::TestCase
     assert_operator second, :>, score.call(plain)
   end
 
+  test "a photo Commons says depicts the scene's subject reaches the check even with an unhelpful name" do
+    stallone = scene(text: "In 1975 Sylvester Stallone was nearly broke.", subject_type: "real_person",
+                     queries: [ "Sylvester Stallone 1975" ], articles: [ "Sylvester Stallone" ], intent: "A portrait.")
+    score = Media::CandidateScore.new(stallone)
+    vague = picture("IMG 4031", source_article: "Sylvester Stallone")
+
+    assert_operator score.call(vague), :<, Media::CandidateScore::MIN_SCORE
+    assert_operator score.call(vague.with(provider: "commons_depicts")), :>=, Media::CandidateScore::MIN_SCORE
+    late = vague.with(provider: "commons_depicts", taken_on: "2009-09-05")
+    assert_operator score.call(late), :<, score.call(vague.with(provider: "commons_depicts", taken_on: "1976-11-21")),
+                    "a photo from the scene's own years still beats one from decades later"
+  end
+
   test "a photo taken long after a historical moment loses points, unless the scene speaks of today" do
     modern = picture("Commercial Street Boston", taken_on: "2015-06-01")
     old = picture("Commercial Street Boston", taken_on: "1919-01-16")

@@ -5,11 +5,13 @@ class Media::CommonsCategoryImagesTest < ActiveSupport::TestCase
   class FakeHttp
     attr_reader :calls
 
-    def initialize(item: "Q1", category: "Boston Molasses Disaster", deep: [ "File:Wreckage 1919.jpg", "File:Logo.jpg" ], shallow: [])
+    def initialize(item: "Q1", category: "Boston Molasses Disaster", deep: [ "File:Wreckage 1919.jpg", "File:Logo.jpg" ], shallow: [],
+                   depicts: [])
       @item = item
       @category = category
       @deep = deep
       @shallow = shallow
+      @depicts = depicts
       @calls = []
     end
 
@@ -19,7 +21,10 @@ class Media::CommonsCategoryImagesTest < ActiveSupport::TestCase
         claims = @category ? { "P373" => [ { "mainsnak" => { "datavalue" => { "value" => @category } } } ] } : {}
         { "entities" => { @item => { "claims" => claims } } }
       elsif url == Media::CommonsSearch::SEARCH_ENDPOINT
-        titles = params[:q].start_with?("deepcategory:") ? @deep : @shallow
+        titles = if params[:q].start_with?("haswbstatement:") then @depicts
+        elsif params[:q].start_with?("deepcategory:") then @deep
+        else @shallow
+        end
         { "pages" => titles.map { |title| { "title" => title } } }
       elsif params[:prop] == "pageprops"
         { "query" => { "pages" => [ { "title" => params[:titles], "pageprops" => (@item ? { "wikibase_item" => @item } : {}) } ] } }
@@ -50,7 +55,25 @@ class Media::CommonsCategoryImagesTest < ActiveSupport::TestCase
     assert_equal "commons_category", result.provider
     assert_equal "Great Molasses Flood", result.source_article
     assert_equal "City of Boston Archives", result.credit
-    assert_equal [ %(deepcategory:"Boston Molasses Disaster" filetype:bitmap) ], http.searches
+    assert_equal [ "haswbstatement:P180=Q1 filetype:bitmap", %(deepcategory:"Boston Molasses Disaster" filetype:bitmap) ], http.searches
+  end
+
+  test "photos tagged as depicting the subject come first, as their own source, even outside the category" do
+    http = FakeHttp.new(item: "Q40026", category: nil, depicts: [ "File:Venice 2009 (26).jpg", "File:Wreckage 1919.jpg" ])
+
+    results = Media::CommonsCategoryImages.new(http: http).images("Sylvester Stallone")
+
+    assert_equal [ "haswbstatement:P180=Q40026 filetype:bitmap" ], http.searches
+    assert_equal %w[commons_depicts commons_depicts], results.map(&:provider)
+    assert_equal [ "Sylvester Stallone" ], results.map(&:source_article).uniq
+  end
+
+  test "a photo both depicting the subject and in its category counts once, as depicting it" do
+    http = FakeHttp.new(depicts: [ "File:Wreckage 1919.jpg" ])
+
+    results = Media::CommonsCategoryImages.new(http: http).images("Great Molasses Flood")
+
+    assert_equal [ "commons_depicts" ], results.map(&:provider)
   end
 
   test "falls back to the category's own files when the deep search finds nothing" do
