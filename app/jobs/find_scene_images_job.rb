@@ -83,6 +83,7 @@ class FindSceneImagesJob < ApplicationJob
       check_pictures(project)
       second_chance(project)
       fill_waiting_scenes(project)
+      record_sources(project)
     end
   ensure
     project.update!(settings: project.settings.except("scenes_searching"))
@@ -301,6 +302,24 @@ class FindSceneImagesJob < ApplicationJob
     rescue Ai::Error => e
       Rails.logger.warn("Picture scout failed for scene #{scene.id}: #{e.message}")
       nil
+    end
+
+    # How many scenes each source filled, to measure where pictures come from, e.g.
+    # {"wikimedia_commons" => 13, "wikipedia_article" => 2, "filler" => 3, "needs_ai" => 1}.
+    def record_sources(project)
+      sources = project.scenes.reload.includes(:images).map { |scene| source_of(scene) }.tally
+      project.update!(settings: project.settings.merge("picture_sources" => sources))
+      Rails.logger.info("Picture sources for project #{project.id}: #{sources.inspect}")
+    end
+
+    # A scene waiting for an AI image counts as needing one, whatever stands in for it meanwhile.
+    def source_of(scene)
+      return "needs_ai" if scene.ai_suggested?
+
+      image = scene.selected_image
+      return "none" unless image
+
+      image.filler? ? "filler" : image.provider
     end
 
     def mood_scene?(scene)

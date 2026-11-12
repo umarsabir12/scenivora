@@ -73,6 +73,18 @@ class Media::CommonsSearchTest < ActiveSupport::TestCase
     assert_equal "https://commons.wikimedia.org/wiki/File:Tesla_1890.jpg", tesla.page_url
   end
 
+  # Licence names as Commons gives them, from a survey of archive photos in November 2026.
+  test "accepts every licence that allows reuse in a monetised video, and nothing else" do
+    allowed = [ "Public domain", "No restrictions", "CC0", "CC0 1.0", "CC BY 2.0", "CC BY 4.0", "CC BY-SA 2.0",
+                "CC BY-SA 4.0", "CC BY-SA 3.0 de", "CC BY-SA 3.0 nl", "CC BY 2.5 nl", "CC BY-SA 2.0 uk",
+                "CC BY-SA 3.0,2.5,2.0,1.0", "OGL v1.0", "OGL v3.0" ]
+    refused = [ "", "CC BY-NC 2.0", "CC BY-NC-SA 4.0", "CC BY-ND 4.0", "GFDL", "All rights reserved",
+                "Fair use", "CC BY-SA 3.0 de and more" ]
+
+    allowed.each { |name| assert_match Media::CommonsSearch::ALLOWED_LICENSE, name, "#{name} should be kept" }
+    refused.each { |name| assert_no_match Media::CommonsSearch::ALLOWED_LICENSE, name, "#{name} should be dropped" }
+  end
+
   test "searches with the bitmap filter, then asks for metadata for the file titles" do
     http = FakeHttp.new(search: SEARCH, metadata: METADATA)
 

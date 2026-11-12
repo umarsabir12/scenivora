@@ -636,6 +636,13 @@ class FindSceneImagesJobTest < ActiveJob::TestCase
     scene = @project.reload.scenes.first
     assert scene.ai_suggested?
     assert scene.selected_image.filler?, "filler footage stands in until the AI image is made"
+    assert_equal({ "needs_ai" => @project.scenes.count }, @project.settings["picture_sources"])
+  end
+
+  test "records how many scenes each source filled" do
+    run_job(commons: FixedSearch.new([]), planner: FakePlanner.new(subject_type: "abstract"))
+
+    assert_equal({ "filler" => @project.scenes.count }, @project.reload.settings["picture_sources"])
   end
 
   test "a mood scene with nothing that fits gets filler footage, not an AI image or the scout" do

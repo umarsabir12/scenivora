@@ -9,8 +9,11 @@ module Media
     METADATA_ENDPOINT = "https://en.wikipedia.org/w/api.php".freeze
     PROVIDER = "wikimedia_commons".freeze
     PHOTO_TYPES = %w[image/jpeg image/png image/webp].freeze
-    # Only licenses that allow reuse in a monetised video with attribution (or none needed).
-    ALLOWED_LICENSE = /\A(Public domain|CC0( 1\.0)?|CC BY(-SA)?( \d\.\d)?)\z/i
+    # Only licenses that allow reuse in a monetised video with attribution (or none needed), as Commons
+    # names them: public domain, "No restrictions" (Flickr Commons archives such as the Library of
+    # Congress), CC0, CC BY and BY-SA in any version, list of versions or national port ("CC BY-SA 3.0
+    # de" is the German Federal Archives), and the UK Open Government Licence. Never NC, ND or GFDL-only.
+    ALLOWED_LICENSE = %r{\A(Public domain|No restrictions|CC0( 1\.0)?|CC BY(-SA)?( \d\.\d(,\d\.\d)*( [a-z]{2})?)?|OGL( v[1-3]\.0)?)\z}i
     CANDIDATE_MULTIPLIER = 4
     MAX_SEARCH_RESULTS = 100
     MAX_TITLES_PER_REQUEST = 50

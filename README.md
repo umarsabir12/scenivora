@@ -272,7 +272,13 @@ plan reads the same research (and the pictures found in its articles) instead of
    the article's Wikidata item, P373, and is searched with `deepcategory:`). The category is usually
    several times bigger than the article ("Great Molasses Flood" shows 6 pictures; its category holds
    24, including the City of Boston Archives photos). Keeps free-licence photos only, dedupes them and
-   keeps up to 300. Titles that don't exist are skipped with a log line.
+   keeps up to 300. Titles that don't exist are skipped with a log line. Free licence means one that
+   allows a monetised video (`CommonsSearch::ALLOWED_LICENSE`): public domain, "No restrictions"
+   (Flickr Commons archives such as the Library of Congress), CC0, CC BY and BY-SA in any version or
+   national port (the German Federal Archives are "CC BY-SA 3.0 de") and the UK Open Government
+   Licence; never NC, ND or GFDL-only. At the end of a run, how many scenes each source filled is
+   saved in `settings["picture_sources"]` (e.g. `{"wikimedia_commons" => 13, "filler" => 3,
+   "needs_ai" => 1}`) and logged.
 4. Builds each scene's pool of up to 12 images, shared between its own articles' pictures (6, those
    sharing the most words with the scene first), Wikimedia Commons keyword search (4) and other
    library pictures sharing words with the scene (2); places one source can't fill go to the others.
