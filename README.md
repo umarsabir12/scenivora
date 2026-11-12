@@ -391,6 +391,13 @@ an hour.
    edge (removes most timecodes, banners and corner logos on 4:3 archive footage), and the last
    frame is held if the clip is shorter than the scene. Each clip lasts an exact number of frames
    at 30 fps, so the clips add up to the narration's length.
+   **Shots.** A scene longer than 5 s is cut into shots of 3–5 s (`Media::Ffmpeg.shot_frames`), so
+   the picture changes every few seconds instead of holding for 10. A still takes turns between the
+   wide zoom, a 1.35× close-up near the top-centre and an 18% left-to-right pan. The close-up and pan
+   are skipped when they would enlarge the picture's own pixels more than 1.75× (soft), and the pan
+   is skipped for pictures shown over a blurred copy (it would mostly move the blur). Footage cuts
+   forward 2–8 s through its source between shots, or plays straight through when the source is too
+   short for that.
 3. **Captions.** When on (the default; a checkbox on the Render page), `Captions::AssBuilder` writes
    an ASS file from the word timings: 1–3 upper-case words at a time in the bundled Anton font,
    numbers and names in yellow, over a dark band, with the YouTube title (if written) as a hook

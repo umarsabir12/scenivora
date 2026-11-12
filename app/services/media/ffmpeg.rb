@@ -23,6 +23,18 @@ module Media
     CROP_FROM_TOP = 0.35
     # Video is trimmed by this fraction on every edge, which cuts most corner logos and timecodes.
     VIDEO_EDGE_TRIM = 0.05
+    # A scene longer than MAX_SHOT_SECONDS is cut into shots of MIN_SHOT_SECONDS to MAX_SHOT_SECONDS:
+    # a picture holding for 10 seconds feels slow. A still cuts between a wide view, a close-up and a
+    # pan; footage cuts to a later part of the clip.
+    MIN_SHOT_SECONDS = 3
+    MAX_SHOT_SECONDS = 5
+    CLOSE_UP = 1.35 # the close-up's magnification over the wide view
+    PAN = 1.18      # the pan's
+    # A framing is used only when it enlarges the picture's own pixels at most this much; tighter is soft.
+    MAX_UPSCALE = 1.75
+    # Footage cuts forward between shots by at least MIN_JUMP_MS (shorter reads as a glitch) and at most MAX_JUMP_MS.
+    MIN_JUMP_MS = 2_000
+    MAX_JUMP_MS = 8_000
     # Streaming from Wikimedia occasionally drops ("Connection reset by peer"); try again this often.
     REMOTE_ATTEMPTS = 3
     REMOTE_TIMEOUT_SECONDS = 30
@@ -53,40 +65,51 @@ module Media
 
     # Joins MP3 parts (or identically encoded MP4 clips) into one file without re-encoding.
     def concat(part_paths, output_path)
-      list_path = File.join(File.dirname(output_path), "parts.txt")
+      list_path = File.join(File.dirname(output_path), "#{File.basename(output_path, ".*")}-parts.txt")
       File.write(list_path, part_paths.map { |path| "file '#{path}'" }.join("\n"))
 
       ffmpeg!("-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", output_path)
       output_path
     end
 
-    # Turns one still image into a 1080p clip of exactly `frames` frames, with a slow zoom in (or out).
+    # Splits a scene's frames into shots of MIN_SHOT_SECONDS to MAX_SHOT_SECONDS, as evenly as possible.
+    # A scene too short for two shots stays one.
+    def self.shot_frames(frames, fps)
+      count = [ [ (frames / (fps * MAX_SHOT_SECONDS.to_f)).ceil, frames / (fps * MIN_SHOT_SECONDS) ].min, 1 ].max
+      Array.new(count) { |index| (frames * (index + 1) / count) - (frames * index / count) }
+    end
+
+    # Turns one still image into a 1080p clip of exactly `frames` frames: a slow zoom in (or out), and
+    # for a long scene, cuts to a close-up and a pan of the same picture when it is sharp enough.
     #
-    # The zoom samples the image at fractional pixel positions every frame (ffmpeg's perspective
+    # The motion samples the image at fractional pixel positions every frame (ffmpeg's perspective
     # filter with cubic interpolation), so it glides instead of stepping. Measured on the same photo:
     # 0.043 unevenness against 0.121 for zoompan at 4x and 0.478 for zoompan at 2x.
     def still_clip(image_path, frames, output_path, fps:, zoom_in: true)
       base_path = File.join(File.dirname(output_path), "#{File.basename(output_path, ".*")}-base.png")
-      prepare_still(image_path, base_path)
+      upscale, fill = prepare_still(image_path, base_path)
 
-      inset = zoom_in ? "(1-1/(1+#{ZOOM}*on/#{frames}))/2" : "(1-1/(1+#{ZOOM}-#{ZOOM}*on/#{frames}))/2"
-      corners = { x0: "W*#{inset}", y0: "H*#{inset}", x1: "W-W*#{inset}", y1: "H*#{inset}",
-                  x2: "W*#{inset}", y2: "H-H*#{inset}", x3: "W-W*#{inset}", y3: "H-H*#{inset}" }
-      motion = "perspective=#{corners.map { |key, value| "#{key}='#{value}'" }.join(":")}:interpolation=cubic:eval=frame," \
-               "scale=#{VIDEO_WIDTH}:#{VIDEO_HEIGHT}:flags=lanczos,format=yuv420p"
-
-      ffmpeg!("-loop", "1", "-framerate", fps.to_s, "-i", base_path, "-vf", motion, "-frames:v", frames.to_s,
-              "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-an", output_path)
-      output_path
+      framings = still_framings(upscale, fill, zoom_in)
+      lengths = framings.size > 1 ? self.class.shot_frames(frames, fps) : [ frames ]
+      shots = lengths.each_with_index.map do |shot_frames, index|
+        shot_path = lengths.one? ? output_path : output_path.sub(/(\.\w+)\z/, format("-shot%d\\1", index + 1))
+        ffmpeg!("-loop", "1", "-framerate", fps.to_s, "-i", base_path, "-vf", motion(framings[index % framings.size], shot_frames),
+                "-frames:v", shot_frames.to_s, "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-an", shot_path)
+        shot_path
+      end
+      shots.one? ? output_path : concat(shots, output_path)
     end
 
     # The still a clip zooms over, made once: fitted to a frame slightly larger than the video,
     # lightly sharpened. Images close to 16:9 fill it; others are shown whole over a blurred copy.
+    # Returns how much the wide view enlarges the image's own pixels, and whether the image fills the frame.
     def prepare_still(image_path, base_path)
       width = even(VIDEO_WIDTH * BASE_MARGIN)
       height = even(VIDEO_HEIGHT * BASE_MARGIN)
+      image_width, image_height = dimensions(image_path)
+      fill = fill_ratio?(image_width, image_height)
       fitted =
-        if fill?(image_path)
+        if fill
           "[0:v]scale=#{width}:#{height}:force_original_aspect_ratio=increase:flags=lanczos," \
           "crop=#{width}:#{height}:(iw-ow)/2:(ih-oh)*#{CROP_FROM_TOP}"
         else
@@ -98,7 +121,8 @@ module Media
 
       ffmpeg!("-i", image_path, "-filter_complex", "#{fitted},setsar=1,unsharp=5:5:0.5,eq=contrast=1.05[v]",
               "-map", "[v]", "-frames:v", "1", base_path)
-      base_path
+      scales = [ width.to_f / image_width, height.to_f / image_height ]
+      [ (fill ? scales.max : scales.min) * VIDEO_WIDTH / width, fill ]
     end
 
     # Cuts `frames` frames from a video (a local path; an HTTPS URL works but streams slowly, so the
@@ -106,20 +130,19 @@ module Media
     # every edge: on 4:3 archive footage this removes the top and bottom bands where timecodes and
     # channel banners sit, and most corner logos. If the source runs out first, its last frame is held.
     # The clip is silent: the narration is added in the final pass.
+    # A long scene cuts forward through the footage between shots, when the source runs long enough.
     def video_clip(source, start_ms, frames, output_path, fps:)
-      keep = 1 - 2 * VIDEO_EDGE_TRIM
-      seconds = format("%.3f", frames.to_f / fps)
-      filter = "fps=#{fps},crop=iw*#{keep}:ih*#{keep}," \
-               "scale=#{VIDEO_WIDTH}:#{VIDEO_HEIGHT}:force_original_aspect_ratio=increase:flags=lanczos," \
-               "crop=#{VIDEO_WIDTH}:#{VIDEO_HEIGHT},setsar=1,eq=contrast=1.05:saturation=0.92," \
-               "tpad=stop_mode=clone:stop_duration=#{seconds},format=yuv420p"
+      lengths = self.class.shot_frames(frames, fps)
+      jump_ms = lengths.one? ? 0 : footage_jump_ms(source, start_ms, frames, fps, lengths.size)
+      return video_shot(source, start_ms, frames, output_path, fps: fps) if jump_ms.zero?
 
-      with_remote_retries(source) do
-        ffmpeg!(*remote_options(source), "-ss", format("%.3f", start_ms / 1000.0), "-i", source,
-                "-vf", filter, "-frames:v", frames.to_s, "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-an",
-                output_path)
+      shot_start_ms = start_ms
+      shots = lengths.each_with_index.map do |shot_frames, index|
+        shot_path = video_shot(source, shot_start_ms, shot_frames, output_path.sub(/(\.\w+)\z/, format("-shot%d\\1", index + 1)), fps: fps)
+        shot_start_ms += shot_frames * 1000 / fps + jump_ms
+        shot_path
       end
-      output_path
+      concat(shots, output_path)
     end
 
     # The final pass: draws captions (an ASS file) over a dark band, adds a light vignette, and
@@ -193,8 +216,57 @@ module Media
     end
 
     private
-      def fill?(image_path)
-        fill_ratio?(*dimensions(image_path))
+      # Framings are the visible part of the still at a shot's first and last frame: centre x, centre y
+      # and size, as fractions of the still. Shots take them in turn, wide first. The close-up and the
+      # pan are used only when the picture has the pixels for them, and the pan only when the picture
+      # fills the frame: over a blurred copy, it would mostly move the blur.
+      def still_framings(upscale, fill, zoom_in)
+        wide = [ [ 0.5, 0.5, 1.0 ], [ 0.5, 0.5, 1 / (1 + ZOOM) ] ]
+        close = [ [ 0.5, 0.45, 1 / CLOSE_UP ], [ 0.5, 0.45, 1 / (CLOSE_UP * (1 + ZOOM / 2)) ] ]
+        edge = (1 - 1 / PAN) / 2
+        pan = [ [ 0.5 - edge, 0.5, 1 / PAN ], [ 0.5 + edge, 0.5, 1 / PAN ] ]
+        framings = [ zoom_in ? wide : wide.reverse ]
+        framings << close if upscale * CLOSE_UP <= MAX_UPSCALE
+        framings << (zoom_in ? pan : pan.reverse) if fill && upscale * PAN <= MAX_UPSCALE
+        framings
+      end
+
+      # Glides the visible part of the still from the framing's first to its last rectangle.
+      def motion(framing, frames)
+        (from_x, from_y, from_size), (to_x, to_y, to_size) = framing
+        along = ->(from, to) { "(#{from}+(#{to - from})*on/#{frames})" }
+        size = along.call(from_size, to_size)
+        left = "W*(#{along.call(from_x, to_x)}-#{size}/2)"
+        right = "W*(#{along.call(from_x, to_x)}+#{size}/2)"
+        top = "H*(#{along.call(from_y, to_y)}-#{size}/2)"
+        bottom = "H*(#{along.call(from_y, to_y)}+#{size}/2)"
+        corners = { x0: left, y0: top, x1: right, y1: top, x2: left, y2: bottom, x3: right, y3: bottom }
+        "perspective=#{corners.map { |key, value| "#{key}='#{value}'" }.join(":")}:interpolation=cubic:eval=frame," \
+          "scale=#{VIDEO_WIDTH}:#{VIDEO_HEIGHT}:flags=lanczos,format=yuv420p"
+      end
+
+      # How far footage skips between shots: the time left after the scene, spread over the cuts and
+      # capped, or 0 (play straight through) when that would be too short to read as a cut.
+      def footage_jump_ms(source, start_ms, frames, fps, shots)
+        spare_ms = duration_ms(source) - start_ms - frames * 1000 / fps
+        jump_ms = [ spare_ms / (shots - 1), MAX_JUMP_MS ].min
+        jump_ms >= MIN_JUMP_MS ? jump_ms : 0
+      end
+
+      def video_shot(source, start_ms, frames, output_path, fps:)
+        keep = 1 - 2 * VIDEO_EDGE_TRIM
+        seconds = format("%.3f", frames.to_f / fps)
+        filter = "fps=#{fps},crop=iw*#{keep}:ih*#{keep}," \
+                 "scale=#{VIDEO_WIDTH}:#{VIDEO_HEIGHT}:force_original_aspect_ratio=increase:flags=lanczos," \
+                 "crop=#{VIDEO_WIDTH}:#{VIDEO_HEIGHT},setsar=1,eq=contrast=1.05:saturation=0.92," \
+                 "tpad=stop_mode=clone:stop_duration=#{seconds},format=yuv420p"
+
+        with_remote_retries(source) do
+          ffmpeg!(*remote_options(source), "-ss", format("%.3f", start_ms / 1000.0), "-i", source,
+                  "-vf", filter, "-frames:v", frames.to_s, "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-an",
+                  output_path)
+        end
+        output_path
       end
 
       def fill_ratio?(width, height)

@@ -16,4 +16,18 @@ class Media::FfmpegTest < ActiveSupport::TestCase
     ENV["PATH"] = original_path
     ENV["FFMPEG_BIN"], ENV["FFPROBE_BIN"] = original_bins
   end
+
+  test "a long scene is cut into shots of 3 to 5 seconds that add up to its frames" do
+    assert_equal [ 138, 138 ], Media::Ffmpeg.shot_frames(276, 30), "9.2 s: two shots"
+    assert_equal [ 108, 108, 108 ], Media::Ffmpeg.shot_frames(324, 30), "10.8 s: three, not two of 5.4 s"
+    assert_equal [ 150 ], Media::Ffmpeg.shot_frames(150, 30), "5 s: one shot"
+    assert_equal [ 177 ], Media::Ffmpeg.shot_frames(177, 30), "5.9 s: two shots would be under 3 s"
+    assert_equal [ 60 ], Media::Ffmpeg.shot_frames(60, 30)
+
+    [ 181, 299, 451, 1000 ].each do |frames|
+      shots = Media::Ffmpeg.shot_frames(frames, 30)
+      assert_equal frames, shots.sum
+      assert shots.all? { |shot| shot.between?(90, 150) }, "#{frames} frames: #{shots.inspect}"
+    end
+  end
 end
